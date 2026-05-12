@@ -1,66 +1,41 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const dbByPath = new Map<string, any>();
+const tempDirs: string[] = [];
+const clientUrl = new URL("../src/services/client.js", import.meta.url).href;
+const connectionManagerUrl = new URL(
+  "../src/services/sqlite/connection-manager.js",
+  import.meta.url
+).href;
+const embeddingUrl = new URL("../src/services/embedding.js", import.meta.url).href;
+const shardManagerUrl = new URL("../src/services/sqlite/shard-manager.js", import.meta.url).href;
+const vectorSearchUrl = new URL("../src/services/sqlite/vector-search.js", import.meta.url).href;
 
-mock.module("../src/services/sqlite/connection-manager.js", () => ({
-  connectionManager: {
-    getConnection(path: string) {
-      if (!dbByPath.has(path)) {
-        dbByPath.set(path, makeDb(path));
-      }
-      return dbByPath.get(path);
-    },
-    closeAll() {},
-  },
-}));
+function runScenario(scriptBody: string) {
+  const dir = mkdtempSync(join(tmpdir(), "opencode-mem-memory-scope-"));
+  tempDirs.push(dir);
+  const scriptPath = join(dir, "scenario.mjs");
+  const script = `
+import { mock } from "bun:test";
 
-mock.module("../src/services/embedding.js", () => ({
-  embeddingService: {
-    isWarmedUp: true,
-    warmup: async () => {},
-    embedWithTimeout: async () => new Float32Array([1, 2, 3]),
-  },
-}));
+const dbByPath = new Map();
 
-mock.module("../src/services/sqlite/shard-manager.js", () => ({
-  shardManager: {
-    getAllShards(scope: string, hash: string) {
-      return scope === "project" && hash === ""
-        ? [makeShard("shard-a"), makeShard("shard-b")]
-        : [makeShard("shard-current")];
-    },
-    getWriteShard() {
-      return makeShard("shard-write");
-    },
-    incrementVectorCount() {},
-  },
-}));
-
-mock.module("../src/services/sqlite/vector-search.js", () => ({
-  vectorSearch: {
-    searchAcrossShards: async (shards: any[]) =>
-      shards.map((s) => ({ id: s.id, memory: s.id, similarity: 1 })),
-    listMemories: (db: any, containerTag: string) => db.listMemories(containerTag),
-    insertVector: async () => {},
-  },
-}));
-
-const { memoryClient } = await import("../src/services/client.js");
-
-function makeShard(id: string) {
+function makeShard(id) {
   return {
     id,
     scope: "project",
     scopeHash: "",
     shardIndex: 0,
-    dbPath: `/tmp/${id}.db`,
+    dbPath: \`/tmp/\${id}.db\`,
     vectorCount: 0,
     isActive: true,
     createdAt: Date.now(),
   };
 }
 
-function makeDb(path: string) {
+function makeDb(path) {
   const rows = path.includes("shard-a")
     ? [{ id: "a", content: "A", created_at: 2, container_tag: "tag-a" }]
     : path.includes("shard-b")
@@ -68,9 +43,9 @@ function makeDb(path: string) {
       : [{ id: "c", content: "C", created_at: 3, container_tag: "current" }];
 
   return {
-    prepare(sql: string) {
+    prepare(sql) {
       return {
-        all(...args: any[]) {
+        all(...args) {
           if (
             sql.includes("SELECT * FROM memories") &&
             sql.includes("ORDER BY created_at DESC") &&
@@ -90,7 +65,7 @@ function makeDb(path: string) {
         run() {},
       };
     },
-    listMemories(containerTag: string) {
+    listMemories(containerTag) {
       return containerTag === "" ? rows : rows.filter((r) => r.container_tag === containerTag);
     },
     run() {},
@@ -98,31 +73,121 @@ function makeDb(path: string) {
   };
 }
 
-beforeEach(() => {
-  dbByPath.clear();
+mock.module(${JSON.stringify(connectionManagerUrl)}, () => ({
+  connectionManager: {
+    getConnection(path) {
+      if (!dbByPath.has(path)) {
+        dbByPath.set(path, makeDb(path));
+      }
+      return dbByPath.get(path);
+    },
+    closeAll() {},
+  },
+}));
+
+mock.module(${JSON.stringify(embeddingUrl)}, () => ({
+  embeddingService: {
+    isWarmedUp: true,
+    warmup: async () => {},
+    embedWithTimeout: async () => new Float32Array([1, 2, 3]),
+  },
+}));
+
+mock.module(${JSON.stringify(shardManagerUrl)}, () => ({
+  shardManager: {
+    getAllShards(scope, hash) {
+      return scope === "project" && hash === ""
+        ? [makeShard("shard-a"), makeShard("shard-b")]
+        : [makeShard("shard-current")];
+    },
+    getWriteShard() {
+      return makeShard("shard-write");
+    },
+    incrementVectorCount() {},
+  },
+}));
+
+mock.module(${JSON.stringify(vectorSearchUrl)}, () => ({
+  vectorSearch: {
+    searchAcrossShards: async (shards) =>
+      shards.map((s) => ({ id: s.id, memory: s.id, similarity: 1 })),
+    listMemories: (db, containerTag) => db.listMemories(containerTag),
+    insertVector: async () => {},
+  },
+}));
+
+const { memoryClient } = await import(${JSON.stringify(clientUrl)});
+${scriptBody}
+`;
+  writeFileSync(scriptPath, script, "utf-8");
+  const result = Bun.spawnSync({
+    cmd: [process.execPath, scriptPath],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = Buffer.from(result.stdout).toString("utf8").trim();
+  const stderr = Buffer.from(result.stderr).toString("utf8").trim();
+  const jsonLine = stdout
+    .split("\n")
+    .reverse()
+    .find((line) => line.trim().startsWith("{"));
+
+  return {
+    exitCode: result.exitCode,
+    stdout,
+    stderr,
+    parsed: jsonLine ? JSON.parse(jsonLine) : null,
+  };
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 describe("memory scope", () => {
-  it("defaults to project scope", async () => {
-    const res = await memoryClient.listMemories("current", 10);
-    expect(res.success).toBe(true);
-    expect(res.memories.length).toBe(1);
+  it("defaults to project scope", () => {
+    const result = runScenario(`
+const res = await memoryClient.listMemories("current", 10);
+console.log(JSON.stringify(res));
+`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.parsed.success).toBe(true);
+    expect(result.parsed.memories.length).toBe(1);
   });
 
-  it("uses config defaultScope when provided", async () => {
-    const res = await memoryClient.searchMemories("hello", "current", "all-projects");
-    expect(res.success).toBe(true);
-    expect(res.results.length).toBe(2);
+  it("uses config defaultScope when provided", () => {
+    const result = runScenario(`
+const res = await memoryClient.searchMemories("hello", "current", "all-projects");
+console.log(JSON.stringify(res));
+`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.parsed.success).toBe(true);
+    expect(result.parsed.results.length).toBe(2);
   });
 
-  it("lets tool params override config", async () => {
-    const res = await memoryClient.listMemories("current", 10, "all-projects");
-    expect(res.success).toBe(true);
-    expect(res.memories.length).toBe(2);
+  it("lets tool params override config", () => {
+    const result = runScenario(`
+const res = await memoryClient.listMemories("current", 10, "all-projects");
+console.log(JSON.stringify(res));
+`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.parsed.success).toBe(true);
+    expect(result.parsed.memories.length).toBe(2);
   });
 
-  it("queries across shards for all-projects", async () => {
-    const res = await memoryClient.searchMemories("hello", "current", "all-projects");
-    expect(res.results.map((r: any) => r.id)).toEqual(["shard-a", "shard-b"]);
+  it("queries across shards for all-projects", () => {
+    const result = runScenario(`
+const res = await memoryClient.searchMemories("hello", "current", "all-projects");
+console.log(JSON.stringify({ ids: res.results.map((r) => r.id) }));
+`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.parsed.ids).toEqual(["shard-a", "shard-b"]);
   });
 });

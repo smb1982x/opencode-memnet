@@ -1,7 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { getProjectName } from "../src/services/tags.js";
-import { dirname } from "node:path";
-import { join } from "node:path";
+import { win32, posix, join } from "node:path";
 
 describe("Windows Path Handling", () => {
   describe("getProjectName", () => {
@@ -50,19 +49,19 @@ describe("Windows Path Handling", () => {
   describe("dirname for database path", () => {
     it("should extract directory correctly from Windows path", () => {
       const dbPath = "C:\\Users\\user\\.opencode-mem\\shards\\project.db";
-      const dir = dirname(dbPath);
+      const dir = win32.dirname(dbPath);
       expect(dir).toBe("C:\\Users\\user\\.opencode-mem\\shards");
     });
 
     it("should extract directory correctly from Unix path", () => {
       const dbPath = "/home/user/.opencode-mem/shards/project.db";
-      const dir = dirname(dbPath);
+      const dir = posix.dirname(dbPath);
       expect(dir).toBe("/home/user/.opencode-mem/shards");
     });
 
     it("should handle paths with mixed separators", () => {
       const dbPath = "C:\\Users\\user/.opencode-mem\\shards/project.db";
-      const dir = dirname(dbPath);
+      const dir = win32.dirname(dbPath.replace(/\//g, "\\"));
       expect(dir).toContain("shards");
     });
   });
