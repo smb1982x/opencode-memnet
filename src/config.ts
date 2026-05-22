@@ -44,7 +44,7 @@ interface OpenCodeMemConfig {
   };
   similarityThreshold?: number;
   maxMemories?: number;
-  maxProfileItems?: number;
+
   injectProfile?: boolean;
   containerTagPrefix?: string;
   autoCaptureEnabled?: boolean;
@@ -139,7 +139,6 @@ const DEFAULTS: Required<
   embeddingDimensions: 1024,
   similarityThreshold: 0.6,
   maxMemories: 10,
-  maxProfileItems: 5,
   injectProfile: true,
   containerTagPrefix: "opencode",
   autoCaptureEnabled: true,
@@ -540,7 +539,6 @@ function buildConfig(fileConfig: OpenCodeMemConfig) {
     embeddingApiKey: resolveSecretValue(fileConfig.embeddingApiKey ?? process.env.OPENAI_API_KEY),
     similarityThreshold: fileConfig.similarityThreshold ?? DEFAULTS.similarityThreshold,
     maxMemories: fileConfig.maxMemories ?? DEFAULTS.maxMemories,
-    maxProfileItems: fileConfig.maxProfileItems ?? DEFAULTS.maxProfileItems,
     injectProfile: fileConfig.injectProfile ?? DEFAULTS.injectProfile,
     containerTagPrefix: fileConfig.containerTagPrefix ?? DEFAULTS.containerTagPrefix,
     autoCaptureEnabled: fileConfig.autoCaptureEnabled ?? DEFAULTS.autoCaptureEnabled,
