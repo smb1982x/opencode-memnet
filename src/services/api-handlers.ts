@@ -353,14 +353,25 @@ export async function handleDeleteMemory(
     if (!id) return { success: false, error: "id is required" };
     const memory = await memoryRepo.getById(id);
     if (!memory) return { success: false, error: "Memory not found" };
+    let linkedPromptId: string | undefined;
     if (cascade) {
-      const linkedPromptId = memory.metadata?.promptId as string | undefined;
+      const metadata =
+        typeof memory.metadata === "string"
+          ? (() => {
+              try {
+                return JSON.parse(memory.metadata as string);
+              } catch {
+                return undefined;
+              }
+            })()
+          : memory.metadata;
+      linkedPromptId = metadata?.promptId as string | undefined;
       if (linkedPromptId) await promptRepo.deletePrompt(linkedPromptId);
     }
     await memoryRepo.delete(id);
     return {
       success: true,
-      data: { deletedPrompt: cascade && !!memory.metadata?.promptId },
+      data: { deletedPrompt: cascade && !!linkedPromptId },
     };
   } catch (error) {
     log("handleDeleteMemory: error", { error: String(error) });
@@ -567,6 +578,9 @@ export async function handleSearch(
     const offset = (page - 1) * pageSize;
     const paginatedResults: SearchResultItem[] = combinedResults.slice(offset, offset + pageSize);
 
+    // Capture total BEFORE appending linked extras so pageSize contract is consistent
+    const total = combinedResults.length;
+
     const missingPromptIds = new Set<string>();
     const missingMemoryIds = new Set<string>();
     for (const item of paginatedResults) {
@@ -624,8 +638,7 @@ export async function handleSearch(
       }
     }
 
-    // Compute total/totalPages AFTER appending linked extras
-    const total = paginatedResults.length;
+    // total was captured before appending linked extras
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     return { success: true, data: { items: paginatedResults, total, page, pageSize, totalPages } };
   } catch (error) {
@@ -871,6 +884,10 @@ let migrationProgress: MigrationProgress = {
   errors: [],
 };
 
+// Cached record list for the current migration run – avoids reloading
+// every memory (including vectors) on each batch call.
+let cachedMigrationRecords: MemoryRecord[] | null = null;
+
 export async function handleGetTagMigrationProgress(): Promise<ApiResponse<MigrationProgress>> {
   return { success: true, data: { ...migrationProgress } };
 }
@@ -878,6 +895,11 @@ export async function handleGetTagMigrationProgress(): Promise<ApiResponse<Migra
 export async function handleRunTagMigrationBatch(
   batchSize: number = 5
 ): Promise<ApiResponse<{ processed: number; total: number; hasMore: boolean }>> {
+  // Guard against concurrent migration requests
+  if (migrationProgress.isComplete === false) {
+    return { success: false, error: "Migration already in progress" };
+  }
+
   try {
     await ensureInit();
     // Only (re)initialize when starting a fresh migration:
@@ -891,6 +913,7 @@ export async function handleRunTagMigrationBatch(
         isComplete: false,
         errors: [],
       };
+      cachedMigrationRecords = null;
     }
     const { AIProviderFactory } = await import("./ai/ai-provider-factory.js");
     const { buildMemoryProviderConfig } = await import("./ai/provider-config.js");
@@ -900,9 +923,14 @@ export async function handleRunTagMigrationBatch(
     });
     const provider = AIProviderFactory.createProvider(CONFIG.memoryProvider, providerConfig);
 
-    const allRecords = (await memoryRepo.getAllWithVectors()).filter((record) =>
-      record.containerTag.includes("_project_")
-    );
+    // Load records only once per migration run and cache them to avoid
+    // re-reading every memory (including vectors) on each batch call.
+    if (!cachedMigrationRecords) {
+      cachedMigrationRecords = (await memoryRepo.getAllWithVectors()).filter((record) =>
+        record.containerTag.includes("_project_")
+      );
+    }
+    const allRecords = cachedMigrationRecords;
 
     migrationProgress.total = allRecords.length;
     migrationProgress.totalBatches = Math.ceil(allRecords.length / batchSize);
@@ -974,6 +1002,7 @@ export async function handleRunTagMigrationBatch(
 
     if (!hasMore) {
       migrationProgress.isComplete = true;
+      cachedMigrationRecords = null;
     }
 
     return {
@@ -981,6 +1010,8 @@ export async function handleRunTagMigrationBatch(
       data: { processed: migrationProgress.processed, total: migrationProgress.total, hasMore },
     };
   } catch (error) {
+    migrationProgress.isComplete = true;
+    cachedMigrationRecords = null;
     return { success: false, error: String(error) };
   }
 }

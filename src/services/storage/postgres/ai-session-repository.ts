@@ -166,24 +166,40 @@ export class PostgresAISessionRepository implements AISessionRepository {
       return message.sequence;
     }
 
-    // DB-side atomic sequence assignment to avoid TOCTOU races
-    const rows = await sql`
-      INSERT INTO ai_messages (
-        ai_session_id, sequence, role, content,
-        tool_calls, tool_call_id, content_blocks, created_at
-      ) VALUES (
-        ${message.aiSessionId},
-        COALESCE((SELECT MAX(sequence) FROM ai_messages WHERE ai_session_id = ${message.aiSessionId}), -1) + 1,
-        ${message.role},
-        ${message.content},
-        ${message.toolCalls ? sql.json(message.toolCalls) : null},
-        ${message.toolCallId ?? null},
-        ${message.contentBlocks ? sql.json(message.contentBlocks) : null},
-        ${now}
-      )
-      RETURNING sequence
-    `;
-    return Number(rows[0]!.sequence);
+    // #5: COALESCE(MAX(sequence))+1 subquery is not atomic under READ COMMITTED.
+    // Two concurrent INSERTs can compute the same sequence → UNIQUE violation (23505).
+    // Catch the violation and retry once with a freshly computed sequence.
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const rows = await sql`
+          INSERT INTO ai_messages (
+            ai_session_id, sequence, role, content,
+            tool_calls, tool_call_id, content_blocks, created_at
+          ) VALUES (
+            ${message.aiSessionId},
+            COALESCE((SELECT MAX(sequence) FROM ai_messages WHERE ai_session_id = ${message.aiSessionId}), -1) + 1,
+            ${message.role},
+            ${message.content},
+            ${message.toolCalls ? sql.json(message.toolCalls) : null},
+            ${message.toolCallId ?? null},
+            ${message.contentBlocks ? sql.json(message.contentBlocks) : null},
+            ${now}
+          )
+          RETURNING sequence
+        `;
+        return Number(rows[0]!.sequence);
+      } catch (err: any) {
+        // PostgreSQL unique violation error code
+        const isUniqueViolation = err?.code === "23505" || err?.message?.includes("23505");
+        if (!isUniqueViolation || attempt === MAX_RETRIES - 1) {
+          throw err;
+        }
+        // Retry — the re-computed MAX(sequence) will reflect the winning INSERT
+      }
+    }
+    // Unreachable, but satisfies TypeScript
+    throw new Error("Failed to assign message sequence after retries");
   }
 
   async getMessages(aiSessionId: string): Promise<AIMessageRow[]> {

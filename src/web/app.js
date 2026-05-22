@@ -29,19 +29,20 @@ function renderMarkdown(markdown) {
 }
 
 async function fetchAPI(endpoint, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
     const response = await fetch(API_BASE + endpoint, {
       ...options,
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     const data = await response.json();
     return data;
   } catch (error) {
     console.error("API Error:", error);
     return { success: false, error: error.message };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -321,7 +322,7 @@ function handleCheckboxChange(e) {
 
 function updateCardSelection(id, selected) {
   const card = document.querySelector(
-    `.memory-card[data-id="${id}"], .prompt-card[data-id="${id}"]`
+    `.memory-card[data-id="${id}"], .prompt-card[data-id="${id}"], .combined-card[data-id="${id}"]`
   );
   if (card) {
     if (selected) {
@@ -408,7 +409,10 @@ async function addMemory(e) {
   }
 }
 
+let loadRequestId = 0;
+
 async function loadMemories() {
+  const requestId = ++loadRequestId;
   showRefreshIndicator(true);
 
   let endpoint = `/api/memories?page=${state.currentPage}&pageSize=${state.pageSize}&includePrompts=true`;
@@ -425,6 +429,9 @@ async function loadMemories() {
   }
 
   const result = await fetchAPI(endpoint);
+
+  // Discard stale responses from superseded requests
+  if (requestId !== loadRequestId) return;
 
   showRefreshIndicator(false);
 
@@ -522,7 +529,7 @@ function deselectAll() {
   state.selectedMemories.clear();
   document.querySelectorAll(".memory-checkbox").forEach((cb) => (cb.checked = false));
   document
-    .querySelectorAll(".memory-card, .prompt-card")
+    .querySelectorAll(".memory-card, .prompt-card, .combined-card")
     .forEach((card) => card.classList.remove("selected"));
   updateBulkActions();
 }
@@ -618,14 +625,17 @@ function changePage(delta) {
   loadMemories();
 }
 
+let toastTimer = null;
 function showToast(message, type = "success") {
+  if (toastTimer) clearTimeout(toastTimer);
   const toast = document.getElementById("toast");
   toast.textContent = message;
   toast.className = `toast ${type}`;
   toast.classList.remove("hidden");
 
-  setTimeout(() => {
+  toastTimer = setTimeout(() => {
     toast.classList.add("hidden");
+    toastTimer = null;
   }, 3000);
 }
 
@@ -886,7 +896,7 @@ function renderUserProfile() {
     container.innerHTML = `
       <div class="empty-state">
         <i data-lucide="user-x" class="icon-large"></i>
-        <p>${profile.message}</p>
+        <p>${escapeHtml(profile.message)}</p>
       </div>
     `;
     lucide.createIcons();
@@ -931,7 +941,7 @@ function renderUserProfile() {
   container.innerHTML = `
     <div class="profile-header">
       <div class="profile-info">
-        <h3>${profile.displayName || profile.userId}</h3>
+        <h3>${escapeHtml(profile.displayName || profile.userId)}</h3>
         <div class="profile-stats">
           <div class="stat-pill">
             <span class="label">${t("profile-version")}</span>

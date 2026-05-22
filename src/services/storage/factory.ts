@@ -194,9 +194,12 @@ class PostgresUserPromptRepositoryLazy implements UserPromptRepository {
 
   private async repo(): Promise<UserPromptRepository> {
     if (!this.target) {
-      this.target = import("./postgres/prompt-repository.js").then(
-        ({ PostgresUserPromptRepository }) => new PostgresUserPromptRepository()
-      );
+      this.target = import("./postgres/prompt-repository.js")
+        .then(({ PostgresUserPromptRepository }) => new PostgresUserPromptRepository())
+        .catch((err) => {
+          this.target = null;
+          throw err;
+        });
     }
     return this.target;
   }
@@ -282,9 +285,12 @@ class PostgresUserProfileRepositoryLazy implements UserProfileRepository {
 
   private async repo(): Promise<UserProfileRepository> {
     if (!this.target) {
-      this.target = import("./postgres/profile-repository.js").then(
-        ({ PostgresUserProfileRepository }) => new PostgresUserProfileRepository()
-      );
+      this.target = import("./postgres/profile-repository.js")
+        .then(({ PostgresUserProfileRepository }) => new PostgresUserProfileRepository())
+        .catch((err) => {
+          this.target = null;
+          throw err;
+        });
     }
     return this.target;
   }
@@ -361,9 +367,12 @@ class PostgresAISessionRepositoryLazy implements AISessionRepository {
 
   private async repo(): Promise<AISessionRepository> {
     if (!this.target) {
-      this.target = import("./postgres/ai-session-repository.js").then(
-        ({ PostgresAISessionRepository }) => new PostgresAISessionRepository()
-      );
+      this.target = import("./postgres/ai-session-repository.js")
+        .then(({ PostgresAISessionRepository }) => new PostgresAISessionRepository())
+        .catch((err) => {
+          this.target = null;
+          throw err;
+        });
     }
     return this.target;
   }

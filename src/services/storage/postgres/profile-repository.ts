@@ -128,21 +128,25 @@ export class PostgresUserProfileRepository implements UserProfileRepository {
       workflows: ensureArray(profileData.workflows),
     };
 
-    await sql`
-      INSERT INTO user_profiles (
-        id, user_id, display_name, user_name, user_email,
-        profile_data, version, created_at, last_analyzed_at,
-        total_prompts_analyzed, is_active
-      ) VALUES (
-        ${id}, ${userId}, ${displayName}, ${userName}, ${userEmail},
-        ${sql.json(cleanedData as any)}, 1, ${now}, ${now},
-        ${promptsAnalyzed}, true
-      )
-      ON CONFLICT (id) DO NOTHING
-    `;
+    // #6: Wrap profile + changelog in a transaction so a changelog failure
+    // rolls back the profile INSERT and we never end up with an orphan profile.
+    await sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO user_profiles (
+          id, user_id, display_name, user_name, user_email,
+          profile_data, version, created_at, last_analyzed_at,
+          total_prompts_analyzed, is_active
+        ) VALUES (
+          ${id}, ${userId}, ${displayName}, ${userName}, ${userEmail},
+          ${tx.json(cleanedData as any)}, 1, ${now}, ${now},
+          ${promptsAnalyzed}, true
+        )
+        ON CONFLICT (id) DO NOTHING
+      `;
 
-    // Add creation changelog
-    await this.addChangelog(sql, id, 1, "create", "Initial profile creation", cleanedData);
+      // Add creation changelog inside same transaction
+      await this.addChangelog(tx, id, 1, "create", "Initial profile creation", cleanedData);
+    });
 
     return id;
   }
@@ -162,20 +166,28 @@ export class PostgresUserProfileRepository implements UserProfileRepository {
       workflows: ensureArray(profileData.workflows),
     };
 
-    // Atomic version increment — avoids read-modify-write race.
-    const result = await sql`
-      UPDATE user_profiles SET
-        profile_data = ${sql.json(cleanedData as any)},
-        version = version + 1,
-        last_analyzed_at = ${now},
-        total_prompts_analyzed = total_prompts_analyzed + ${additionalPromptsAnalyzed}
-      WHERE id = ${profileId}
-      RETURNING version
-    `;
-    const newVersion = Number(result[0]?.version ?? 0);
+    // #6: Wrap UPDATE + changelog INSERT in a transaction so a changelog
+    // failure rolls back the version bump and we never have a version with
+    // no matching changelog entry.
+    await sql.begin(async (tx) => {
+      // Atomic version increment — avoids read-modify-write race.
+      const result = await tx`
+        UPDATE user_profiles SET
+          profile_data = ${tx.json(cleanedData as any)},
+          version = version + 1,
+          last_analyzed_at = ${now},
+          total_prompts_analyzed = total_prompts_analyzed + ${additionalPromptsAnalyzed}
+        WHERE id = ${profileId}
+        RETURNING version
+      `;
 
-    await this.addChangelog(sql, profileId, newVersion, "update", changeSummary, cleanedData);
-    await this.cleanupOldChangelogs(sql, profileId);
+      if (result.length === 0) return; // profile doesn't exist — nothing to update
+
+      const newVersion = Number(result[0]!.version);
+
+      await this.addChangelog(tx, profileId, newVersion, "update", changeSummary, cleanedData);
+      await this.cleanupOldChangelogs(tx, profileId);
+    });
   }
 
   async deleteProfile(profileId: string): Promise<void> {

@@ -114,7 +114,11 @@ export class EmbeddingService {
       if (!Array.isArray(data.data) || data.data.length === 0) {
         throw new Error("Embedding API returned empty data array");
       }
-      result = new Float32Array(data.data[0].embedding);
+      const embLeft = data.data[0]?.embedding;
+      if (!Array.isArray(embLeft) || embLeft.length === 0) {
+        throw new Error("Embedding API returned empty or missing embedding vector");
+      }
+      result = new Float32Array(embLeft);
     } else {
       // Right truncation: app-side already done, do not send truncate_prompt_tokens
       const response = await fetch(`${CONFIG.embeddingApiUrl}/embeddings`, {
@@ -135,7 +139,11 @@ export class EmbeddingService {
       if (!Array.isArray(data.data) || data.data.length === 0) {
         throw new Error("Embedding API returned empty data array");
       }
-      result = new Float32Array(data.data[0].embedding);
+      const embRight = data.data[0]?.embedding;
+      if (!Array.isArray(embRight) || embRight.length === 0) {
+        throw new Error("Embedding API returned empty or missing embedding vector");
+      }
+      result = new Float32Array(embRight);
     }
 
     if (this.cache.size >= MAX_CACHE_SIZE) {

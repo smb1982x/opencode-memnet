@@ -257,8 +257,8 @@ export class WebServer {
 
       if (path === "/api/memories" && method === "GET") {
         const tag = url.searchParams.get("tag") || undefined;
-        const page = parseInt(url.searchParams.get("page") || "1");
-        const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
+        const page = parseInt(url.searchParams.get("page") || "1") || 1;
+        const pageSize = parseInt(url.searchParams.get("pageSize") || "20") || 20;
         const includePrompts = url.searchParams.get("includePrompts") !== "false";
         const result = await handleListMemories(tag, page, pageSize, includePrompts);
         return this.jsonResponse(result);
@@ -302,8 +302,8 @@ export class WebServer {
       if (path === "/api/search" && method === "GET") {
         const query = url.searchParams.get("q");
         const tag = url.searchParams.get("tag") || undefined;
-        const page = parseInt(url.searchParams.get("page") || "1");
-        const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
+        const page = parseInt(url.searchParams.get("page") || "1") || 1;
+        const pageSize = parseInt(url.searchParams.get("pageSize") || "20") || 20;
 
         if (!query) {
           return this.jsonResponse({ success: false, error: "query parameter required" });
@@ -405,10 +405,11 @@ export class WebServer {
 
       return new Response("Not Found", { status: 404 });
     } catch (error) {
+      log("handleRequest: unhandled error", { error: String(error) });
       return this.jsonResponse(
         {
           success: false,
-          error: error instanceof Error ? error.message : "Internal error",
+          error: "Internal server error",
         },
         500
       );
