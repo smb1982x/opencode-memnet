@@ -778,3 +778,89 @@ export function isConfigured(): boolean {
 export function getConfigErrors(): string[] {
   return [..._configErrors];
 }
+
+/**
+ * Bridge a standalone server configuration into the global CONFIG object.
+ * Call this BEFORE any storage or embedding operations when running
+ * outside the plugin context (e.g., in src/server.ts).
+ */
+export function serverConfigToGlobalConfig(serverConfig: {
+  postgres: {
+    url: string;
+    ssl: boolean | "require";
+    maxConnections: number;
+    idleTimeoutSeconds: number;
+    connectTimeoutSeconds: number;
+    vectorType: "vector" | "halfvec";
+    hnswEfSearch: number;
+    hnswEfConstruction: number;
+  };
+  embeddingModel: string;
+  embeddingApiUrl: string;
+  embeddingApiKey: string;
+  embeddingDimensions: number;
+  embeddingMaxTokens: { content: number; tags: number; query: number; migration: number };
+  embeddingTruncationSide: {
+    content: "left" | "right";
+    tags: "left" | "right";
+    query: "left" | "right";
+    migration: "left" | "right";
+  };
+  similarityThreshold: number;
+  maxMemories: number;
+  injectProfile: boolean;
+  memoryProvider: "openai-chat";
+  memoryModel?: string;
+  memoryApiUrl?: string;
+  memoryApiKey?: string;
+  memoryTemperature?: number | false;
+  memoryExtraParams?: Record<string, unknown>;
+  autoCaptureLanguage: string;
+  aiSessionRetentionDays: number;
+  userProfileAnalysisInterval: number;
+  userProfileMaxPreferences: number;
+  userProfileMaxPatterns: number;
+  userProfileMaxWorkflows: number;
+  userProfileConfidenceDecayDays: number;
+  userProfileChangelogRetentionCount: number;
+}): void {
+  // Postgres
+  CONFIG.postgres = CONFIG.postgres ?? ({} as any);
+  CONFIG.postgres.url = serverConfig.postgres.url;
+  CONFIG.postgres.ssl = serverConfig.postgres.ssl;
+  CONFIG.postgres.maxConnections = serverConfig.postgres.maxConnections;
+  CONFIG.postgres.idleTimeoutSeconds = serverConfig.postgres.idleTimeoutSeconds;
+  CONFIG.postgres.connectTimeoutSeconds = serverConfig.postgres.connectTimeoutSeconds;
+  CONFIG.postgres.vectorType = serverConfig.postgres.vectorType;
+  CONFIG.postgres.hnswEfSearch = serverConfig.postgres.hnswEfSearch;
+  CONFIG.postgres.hnswEfConstruction = serverConfig.postgres.hnswEfConstruction;
+
+  // Embedding
+  CONFIG.embeddingModel = serverConfig.embeddingModel;
+  CONFIG.embeddingApiUrl = serverConfig.embeddingApiUrl;
+  CONFIG.embeddingApiKey = serverConfig.embeddingApiKey;
+  CONFIG.embeddingDimensions = serverConfig.embeddingDimensions;
+  CONFIG.embeddingMaxTokens = serverConfig.embeddingMaxTokens;
+  CONFIG.embeddingTruncationSide = serverConfig.embeddingTruncationSide;
+
+  // Memory / AI
+  CONFIG.similarityThreshold = serverConfig.similarityThreshold;
+  CONFIG.maxMemories = serverConfig.maxMemories;
+  CONFIG.injectProfile = serverConfig.injectProfile;
+  CONFIG.memoryProvider = serverConfig.memoryProvider;
+  CONFIG.memoryModel = serverConfig.memoryModel;
+  CONFIG.memoryApiUrl = serverConfig.memoryApiUrl;
+  CONFIG.memoryApiKey = serverConfig.memoryApiKey;
+  CONFIG.memoryTemperature = serverConfig.memoryTemperature;
+  CONFIG.memoryExtraParams = serverConfig.memoryExtraParams;
+  CONFIG.autoCaptureLanguage = serverConfig.autoCaptureLanguage;
+  CONFIG.aiSessionRetentionDays = serverConfig.aiSessionRetentionDays;
+
+  // User profile
+  CONFIG.userProfileAnalysisInterval = serverConfig.userProfileAnalysisInterval;
+  CONFIG.userProfileMaxPreferences = serverConfig.userProfileMaxPreferences;
+  CONFIG.userProfileMaxPatterns = serverConfig.userProfileMaxPatterns;
+  CONFIG.userProfileMaxWorkflows = serverConfig.userProfileMaxWorkflows;
+  CONFIG.userProfileConfidenceDecayDays = serverConfig.userProfileConfidenceDecayDays;
+  CONFIG.userProfileChangelogRetentionCount = serverConfig.userProfileChangelogRetentionCount;
+}

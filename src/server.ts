@@ -18,6 +18,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Bridge server config into global CONFIG for storage/embedding layers
+  const { serverConfigToGlobalConfig } = await import("./config.js");
+  serverConfigToGlobalConfig(config);
+
   // 2. Initialize storage (runs DB migrations)
   try {
     await initializeStorage();
