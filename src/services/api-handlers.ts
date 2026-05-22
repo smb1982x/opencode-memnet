@@ -220,12 +220,19 @@ export async function handleListMemories(
     }
 
     const sortedTimeline: any[] = [];
-    const pairs = Array.from(linkedPairs.values())
+    const allPairs = Array.from(linkedPairs.values());
+    const completePairs = allPairs
       .filter((p) => p.memory && p.prompt)
       .sort((a, b) => b.memory.createdAt - a.memory.createdAt);
-    for (const pair of pairs) {
+    for (const pair of completePairs) {
       sortedTimeline.push(pair.memory);
       sortedTimeline.push(pair.prompt);
+    }
+    // Add orphaned items (linked but partner deleted) back to standalone
+    const incompletePairs = allPairs.filter((p) => !(p.memory && p.prompt));
+    for (const pair of incompletePairs) {
+      if (pair.memory) standalone.push(pair.memory);
+      if (pair.prompt) standalone.push(pair.prompt);
     }
     standalone.sort((a, b) => b.createdAt - a.createdAt);
     sortedTimeline.push(...standalone);
@@ -554,8 +561,6 @@ export async function handleSearch(
         (b.similarity || 0) - (a.similarity || 0) || b.createdAt.localeCompare(a.createdAt)
     );
 
-    const total = combinedResults.length;
-    const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
     const paginatedResults: SearchResultItem[] = combinedResults.slice(offset, offset + pageSize);
 
@@ -616,6 +621,9 @@ export async function handleSearch(
       }
     }
 
+    // Compute total/totalPages AFTER appending linked extras
+    const total = paginatedResults.length;
+    const totalPages = Math.max(1, Math.ceil(combinedResults.length / pageSize));
     return { success: true, data: { items: paginatedResults, total, page, pageSize, totalPages } };
   } catch (error) {
     log("handleSearch: error", { error: String(error) });
@@ -791,7 +799,6 @@ export async function handleGetProfileSnapshot(changelogId: string): Promise<Api
     if (!changelogId) return { success: false, error: "changelogId is required" };
     const changelog = await profileRepo.getChangelogById(changelogId);
     if (!changelog) return { success: false, error: "Changelog not found" };
-    const changelogs = await profileRepo.getProfileChangelogs(changelog.profileId, 1000);
     const profileData = JSON.parse(changelog.profileDataSnapshot);
     return {
       success: true,
@@ -862,7 +869,7 @@ let migrationProgress: MigrationProgress = {
 };
 
 export async function handleGetTagMigrationProgress(): Promise<ApiResponse<MigrationProgress>> {
-  return { success: true, data: migrationProgress };
+  return { success: true, data: { ...migrationProgress } };
 }
 
 export async function handleRunTagMigrationBatch(

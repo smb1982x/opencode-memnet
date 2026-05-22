@@ -212,6 +212,19 @@ export class WebServer {
     const method = req.method;
 
     try {
+      // Handle CORS preflight
+      if (method === "OPTIONS") {
+        const headers = new Headers();
+        headers.set("Access-Control-Allow-Origin", this.allowedOrigin);
+        headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        headers.set("Access-Control-Max-Age", "86400");
+        if (this.allowedOrigin !== "*") {
+          headers.set("Vary", "Origin");
+        }
+        return new Response(null, { status: 204, headers });
+      }
+
       if (path === "/" || path === "/index.html") {
         return this.serveStaticFile("index.html", "text/html");
       }
@@ -429,7 +442,7 @@ export class WebServer {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": this.allowedOrigin,
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     };
 
     if (this.allowedOrigin !== "*") {

@@ -89,6 +89,11 @@ export class PostgresUserPromptRepository implements UserPromptRepository {
     return rows.length > 0;
   }
 
+  async releasePrompt(promptId: string): Promise<void> {
+    const sql = getPostgresClient();
+    await sql`UPDATE user_prompts SET captured = 0 WHERE id = ${promptId} AND captured = 2`;
+  }
+
   async countUncapturedPrompts(): Promise<number> {
     const sql = getPostgresClient();
     const rows = await sql`
@@ -219,13 +224,14 @@ export class PostgresUserPromptRepository implements UserPromptRepository {
     limit: number = 20
   ): Promise<UserPromptRow[]> {
     const sql = getPostgresClient();
-    const likePattern = `%${query}%`;
+    const escaped = query.replace(/[%_]/g, "\\$&");
+    const likePattern = `%${escaped}%`;
 
     let rows;
     if (projectPath) {
       rows = await sql`
         SELECT * FROM user_prompts
-        WHERE content LIKE ${likePattern}
+        WHERE content LIKE ${likePattern} ESCAPE '\\'
           AND captured = 1
           AND project_path = ${projectPath}
         ORDER BY created_at DESC
@@ -234,7 +240,7 @@ export class PostgresUserPromptRepository implements UserPromptRepository {
     } else {
       rows = await sql`
         SELECT * FROM user_prompts
-        WHERE content LIKE ${likePattern} AND captured = 1
+        WHERE content LIKE ${likePattern} ESCAPE '\\' AND captured = 1
         ORDER BY created_at DESC
         LIMIT ${limit}
       `;

@@ -6,10 +6,6 @@ const GLOBAL_EMBEDDING_KEY = Symbol.for("opencode-mem.embedding.instance");
 const MAX_CACHE_SIZE = 100;
 const CHARS_PER_TOKEN = 4;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return promise; // kept for compat; actual abort logic is in embedWithTimeout
-}
-
 export type EmbeddingKind = "content" | "tags" | "query" | "migration";
 
 export interface EmbeddingOptions {
@@ -74,7 +70,12 @@ export class EmbeddingService {
     const cacheKey = `${CONFIG.embeddingModel}:${kind}:${maxTokens}:${side}:${effectiveText}`;
 
     const cached = this.cache.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      // LRU: move accessed entry to end of Map
+      this.cache.delete(cacheKey);
+      this.cache.set(cacheKey, cached);
+      return cached;
+    }
 
     if (!this.isWarmedUp) {
       await this.warmup();

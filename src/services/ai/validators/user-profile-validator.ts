@@ -19,6 +19,16 @@ export class UserProfileValidator {
     if (keys.length === 0) {
       return { valid: false, errors: ["Response object is empty"] };
     }
+    // Check that required keys exist
+    const requiredKeys = ["preferences", "patterns", "workflows"];
+    for (const key of requiredKeys) {
+      if (!(key in data)) {
+        return { valid: false, errors: [`Missing required field: ${key}`] };
+      }
+      if (!Array.isArray(data[key])) {
+        return { valid: false, errors: [`Field "${key}" must be an array`] };
+      }
+    }
     for (const key of keys) {
       if (data[key] === undefined || data[key] === null) {
         errors.push(`Field '${key}' is null or undefined`);

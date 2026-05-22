@@ -324,6 +324,27 @@ export const migrations: Migration[] = [
       `;
     },
   },
+
+  // ── 11: unique constraint on ai_sessions(session_id, provider) ──
+  {
+    version: 11,
+    description: "Add unique index on ai_sessions (session_id, provider)",
+    transactional: true,
+    up: async (sql) => {
+      // First deduplicate: keep the most recent row per (session_id, provider).
+      await sql`
+        DELETE FROM ai_sessions a
+        USING ai_sessions b
+        WHERE a.session_id = b.session_id
+          AND a.provider = b.provider
+          AND a.id < b.id
+      `;
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_sessions_session_provider
+        ON ai_sessions (session_id, provider)
+      `;
+    },
+  },
 ];
 
 // ── Runner ──

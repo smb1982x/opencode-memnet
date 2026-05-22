@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CONFIG } from "../config.js";
 import {
   handleListTags,
   handleListMemories,
@@ -26,6 +27,18 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+
+async function parseBody(req: Request): Promise<any> {
+  const body = await req.text();
+  if (body.length > MAX_BODY_SIZE) {
+    throw Object.assign(new Error("Request body too large"), { status: 413 });
+  }
+  return JSON.parse(body);
+}
+
+const allowedOrigin = CONFIG.webServerAllowedOrigin ?? "*";
+
 interface WorkerMessage {
   type: "start" | "stop" | "status";
   port?: number;
@@ -47,6 +60,19 @@ async function handleRequest(req: Request): Promise<Response> {
   const method = req.method;
 
   try {
+    // Handle CORS preflight
+    if (method === "OPTIONS") {
+      const headers = new Headers();
+      headers.set("Access-Control-Allow-Origin", allowedOrigin);
+      headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      headers.set("Access-Control-Max-Age", "86400");
+      if (allowedOrigin !== "*") {
+        headers.set("Vary", "Origin");
+      }
+      return new Response(null, { status: 204, headers });
+    }
+
     if (path === "/" || path === "/index.html") {
       return serveStaticFile("index.html", "text/html");
     }
@@ -82,7 +108,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/memories" && method === "POST") {
-      const body = (await req.json()) as any;
+      const body = (await parseBody(req)) as any;
       const result = await handleAddMemory(body);
       return jsonResponse(result);
     }
@@ -103,13 +129,13 @@ async function handleRequest(req: Request): Promise<Response> {
       if (!id) {
         return jsonResponse({ success: false, error: "Invalid ID" });
       }
-      const body = (await req.json()) as any;
+      const body = (await parseBody(req)) as any;
       const result = await handleUpdateMemory(id, body);
       return jsonResponse(result);
     }
 
     if (path === "/api/memories/bulk-delete" && method === "POST") {
-      const body = (await req.json()) as any;
+      const body = (await parseBody(req)) as any;
       const cascade = body.cascade !== false;
       const result = await handleBulkDelete(body.ids || [], cascade);
       return jsonResponse(result);
@@ -158,7 +184,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/migration/tags/run-batch" && method === "POST") {
-      const body = (await req.json()) as any;
+      const body = (await parseBody(req)) as any;
       const batchSize = body?.batchSize || 5;
       const result = await handleRunTagMigrationBatch(batchSize);
       return jsonResponse(result);
@@ -181,7 +207,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/prompts/bulk-delete" && method === "POST") {
-      const body = (await req.json()) as any;
+      const body = (await parseBody(req)) as any;
       const cascade = body.cascade !== false;
       const result = await handleBulkDeletePrompts(body.ids || [], cascade);
       return jsonResponse(result);
@@ -213,7 +239,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/user-profile/refresh" && method === "POST") {
-      const body = (await req.json().catch(() => ({}))) as any;
+      const body = (await parseBody(req).catch(() => ({}))) as any;
       const userId = body.userId || undefined;
       const result = await handleRefreshProfile(userId);
       return jsonResponse(result);
@@ -260,14 +286,21 @@ function serveStaticFile(filename: string, contentType: string): Response {
 }
 
 function jsonResponse(data: any, status: number = 200): Response {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+
+  if (allowedOrigin !== "*") {
+    headers["Vary"] = "Origin";
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
+    headers,
   });
 }
 

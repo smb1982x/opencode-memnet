@@ -68,7 +68,7 @@ export class PostgresAISessionRepository implements AISessionRepository {
     const retentionMs = CONFIG.aiSessionRetentionDays * 24 * 60 * 60 * 1000;
     const expiresAt = now + retentionMs;
 
-    await sql`
+    const rows = await sql`
       INSERT INTO ai_sessions (
         id, provider, session_id, conversation_id,
         metadata, created_at, updated_at, expires_at
@@ -78,19 +78,16 @@ export class PostgresAISessionRepository implements AISessionRepository {
         ${params.metadata ? sql.json(params.metadata) : null},
         ${now}, ${now}, ${expiresAt}
       )
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (session_id, provider) DO UPDATE SET
+        expires_at = EXCLUDED.expires_at,
+        updated_at = EXCLUDED.updated_at,
+        conversation_id = COALESCE(EXCLUDED.conversation_id, ai_sessions.conversation_id),
+        metadata = COALESCE(EXCLUDED.metadata, ai_sessions.metadata)
+      RETURNING *
     `;
 
-    return {
-      id,
-      provider: params.provider,
-      sessionId: params.sessionId,
-      conversationId: params.conversationId,
-      metadata: params.metadata,
-      createdAt: now,
-      updatedAt: now,
-      expiresAt,
-    };
+    const row = rows[0];
+    return rowToSessionRow(row);
   }
 
   async updateSession(

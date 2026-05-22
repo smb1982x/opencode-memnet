@@ -243,7 +243,7 @@ function renderMemoryCard(memory) {
   const isLinked = !!memory.linkedPromptId;
   const similarityHtml =
     memory.similarity !== undefined
-      ? `<span class="similarity-score">${memory.similarity}%</span>`
+      ? `<span class="similarity-score">${Math.round((memory.similarity || 0) * 100)}%</span>`
       : "";
 
   let displayInfo = memory.displayName || memory.id;

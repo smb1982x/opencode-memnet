@@ -327,14 +327,7 @@ export class OpenAIChatCompletionProvider extends BaseAIProvider {
           };
         }
 
-        const choice = data.choices[0];
-        if (!choice) {
-          return {
-            success: false,
-            error: "Invalid API response format",
-            iterations,
-          };
-        }
+        const choice = data.choices[0]!;
 
         const assistantSequence = ((await this.sessionRepo.getLastSequence(session.id)) ?? 0) + 1;
         const assistantMsg: AssistantSessionMessage = {
@@ -415,19 +408,14 @@ export class OpenAIChatCompletionProvider extends BaseAIProvider {
                   rawArguments: toolCall.function.arguments.slice(0, 500),
                 });
 
-                const errorMessage = `Validation failed: ${String(validationError)}`;
-                await this.addToolResponse(
-                  session.id,
-                  messages,
-                  toolCallId,
-                  JSON.stringify({ success: false, error: errorMessage })
-                );
+                const errorMessage =
+                  validationError instanceof Error
+                    ? `Validation failed: ${validationError.message}. Please provide valid JSON matching the expected schema.`
+                    : `Validation failed: ${String(validationError)}`;
+                await this.addToolResponse(session.id, messages, toolCallId, errorMessage);
 
-                return {
-                  success: false,
-                  error: errorMessage,
-                  iterations,
-                };
+                // Feed the error back to the model and let it retry
+                break;
               }
             }
 
@@ -439,7 +427,7 @@ export class OpenAIChatCompletionProvider extends BaseAIProvider {
               JSON.stringify({ success: false, error: wrongToolMessage })
             );
 
-            break;
+            continue;
           }
         }
 

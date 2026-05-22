@@ -189,6 +189,7 @@ export interface UserPromptRepository {
   deletePrompt(promptId: string): Promise<void>;
   markAsCaptured(promptId: string): Promise<void>;
   claimPrompt(promptId: string): Promise<boolean>;
+  releasePrompt(promptId: string): Promise<void>;
   countUncapturedPrompts(): Promise<number>;
   getUncapturedPrompts(limit: number): Promise<UserPromptRow[]>;
   markMultipleAsCaptured(promptIds: string[]): Promise<void>;

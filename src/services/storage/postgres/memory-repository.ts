@@ -29,7 +29,10 @@ function extractScopeFromContainerTag(containerTag: string): {
 } {
   const parts = containerTag.split("_");
   if (parts.length >= 3) {
-    const scope = parts[1] as "user" | "project";
+    const scope = parts[1];
+    if (scope !== "user" && scope !== "project") {
+      throw new Error(`Invalid scope extracted from container tag: ${scope}`);
+    }
     const hash = parts.slice(2).join("_");
     return { scope, hash };
   }

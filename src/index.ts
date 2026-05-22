@@ -33,6 +33,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
   const tags = await getTags(directory);
   let webServer: WebServer | null = null;
   let idleTimeout: Timer | null = null;
+  let captureInProgress = false;
 
   if (!isConfigured()) {
     log("Plugin not configured — skipping handler registration. Check your config.");
@@ -185,9 +186,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
         const messages = messagesResponse.data || [];
 
         const hasNonSyntheticUserMessages = messages.some(
-          (m) =>
-            m.info.role === "user" &&
-            !m.parts.every((p) => p.type !== "text" || p.synthetic === true)
+          (m) => m.info.role === "user" && m.parts.some((p) => p.type === "text" && !p.synthetic)
         );
 
         const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -199,8 +198,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
           (isAfterCompaction &&
             messages.filter(
               (m) =>
-                m.info.role === "user" &&
-                !m.parts.every((p) => p.type !== "text" || p.synthetic === true)
+                m.info.role === "user" && m.parts.some((p) => p.type === "text" && !p.synthetic)
             ).length === 1);
 
         if (!shouldInject) return;
@@ -216,8 +214,8 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
           memories = memories.filter((m: any) => m.metadata?.sessionID !== input.sessionID);
         }
 
-        if (CONFIG.chatMessage.maxAgeDays) {
-          const cutoffDate = Date.now() - CONFIG.chatMessage.maxAgeDays * 86400000;
+        if (CONFIG.chatMessage.maxAgeDays != null) {
+          const cutoffDate = Date.now() - CONFIG.chatMessage.maxAgeDays! * 86400000;
           memories = memories.filter((m: any) => new Date(m.createdAt).getTime() > cutoffDate);
         }
 
@@ -510,6 +508,8 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
 
         if (idleTimeout) clearTimeout(idleTimeout);
 
+        if (captureInProgress) return;
+        captureInProgress = true;
         idleTimeout = setTimeout(async () => {
           try {
             await performAutoCapture(ctx, sessionID, directory);
@@ -521,6 +521,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
             log("Idle processing error", { error: String(error) });
           } finally {
             idleTimeout = null;
+            captureInProgress = false;
           }
         }, 10000);
       }
@@ -532,8 +533,6 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
         if (!sessionID) return;
 
         try {
-          const tags = await getTags(directory);
-
           const memoriesResult = await memoryClient.searchMemoriesBySessionID(
             sessionID,
             tags.project.tag,

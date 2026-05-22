@@ -224,6 +224,9 @@ class PostgresUserPromptRepositoryLazy implements UserPromptRepository {
   async claimPrompt(promptId: string): Promise<boolean> {
     return (await this.repo()).claimPrompt(promptId);
   }
+  async releasePrompt(promptId: string): Promise<void> {
+    await (await this.repo()).releasePrompt(promptId);
+  }
   async countUncapturedPrompts(): Promise<number> {
     return (await this.repo()).countUncapturedPrompts();
   }

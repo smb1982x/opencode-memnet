@@ -185,40 +185,84 @@ export class PostgresUserProfileRepository implements UserProfileRepository {
 
   async applyConfidenceDecay(profileId: string): Promise<void> {
     const sql = getPostgresClient();
-    const rows = await sql`
-      SELECT profile_data FROM user_profiles WHERE id = ${profileId}
-    `;
-    if (rows.length === 0) return;
-
-    const profileData: UserProfileData =
-      typeof rows[0]!.profile_data === "string"
-        ? JSON.parse(rows[0]!.profile_data)
-        : (rows[0]!.profile_data as UserProfileData);
-
     const now = Date.now();
-    const decayThreshold = CONFIG.userProfileConfidenceDecayDays * 24 * 60 * 60 * 1000;
-
+    const decayThresholdMs = CONFIG.userProfileConfidenceDecayDays * 24 * 60 * 60 * 1000;
     const CHANGE_THRESHOLD = 0.05;
-    let hasSignificantChange = false;
+    const MAX_RETRIES = 3;
 
-    profileData.preferences = profileData.preferences
-      .map((pref) => {
-        const age = now - pref.lastUpdated;
-        if (age > decayThreshold) {
-          const decayFactor = Math.max(0.5, 1 - (age - decayThreshold) / decayThreshold);
-          const newConfidence = pref.confidence * decayFactor;
-          if (pref.confidence - newConfidence > CHANGE_THRESHOLD) {
-            hasSignificantChange = true;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      // Read current profile data + version for optimistic locking (#9)
+      const rows = await sql`
+        SELECT profile_data, version FROM user_profiles WHERE id = ${profileId}
+      `;
+      if (rows.length === 0) return;
+
+      const profileData: UserProfileData =
+        typeof rows[0]!.profile_data === "string"
+          ? JSON.parse(rows[0]!.profile_data)
+          : (rows[0]!.profile_data as UserProfileData);
+
+      const expectedVersion = Number(rows[0]!.version);
+      const originalPrefCount = profileData.preferences.length;
+
+      let hasSignificantChange = false;
+
+      profileData.preferences = profileData.preferences
+        .map((pref) => {
+          const age = now - pref.lastUpdated;
+          if (age > decayThresholdMs) {
+            const decayFactor = Math.max(0.5, 1 - (age - decayThresholdMs) / decayThresholdMs);
+            const newConfidence = pref.confidence * decayFactor;
+            if (pref.confidence - newConfidence > CHANGE_THRESHOLD) {
+              hasSignificantChange = true;
+            }
+            return { ...pref, confidence: newConfidence };
           }
-          return { ...pref, confidence: newConfidence };
-        }
-        return pref;
-      })
-      .filter((pref) => pref.confidence >= 0.3);
+          return pref;
+        })
+        .filter((pref) => pref.confidence >= 0.3);
 
-    if (!hasSignificantChange) return;
+      // #19: Always write back when prefs are filtered out, even if no single
+      // preference crossed the CHANGE_THRESHOLD. Without this the filtered prefs
+      // are silently lost and reappear on the next cycle.
+      const prefsWereRemoved = profileData.preferences.length < originalPrefCount;
+      if (!hasSignificantChange && !prefsWereRemoved) return;
 
-    await this.updateProfile(profileId, profileData, 0, "Applied confidence decay to preferences");
+      const cleanedData: UserProfileData = {
+        preferences: ensureArray(profileData.preferences),
+        patterns: ensureArray(profileData.patterns),
+        workflows: ensureArray(profileData.workflows),
+      };
+
+      // #9: Optimistic lock — only UPDATE if version matches what we read.
+      // A concurrent write will bump version, causing 0 rows returned → retry.
+      const result = await sql`
+        UPDATE user_profiles
+        SET profile_data = ${sql.json(cleanedData as any)},
+            version = version + 1,
+            last_analyzed_at = ${now}
+        WHERE id = ${profileId} AND version = ${expectedVersion}
+        RETURNING version
+      `;
+
+      if (result.length === 0) {
+        // Concurrent modification — retry with fresh data
+        continue;
+      }
+
+      const newVersion = Number(result[0]!.version);
+      await this.addChangelog(
+        sql,
+        profileId,
+        newVersion,
+        "decay",
+        "Applied confidence decay to preferences",
+        cleanedData
+      );
+      await this.cleanupOldChangelogs(sql, profileId);
+      return;
+    }
+    // Retries exhausted — concurrent contention; safe to skip, next decay cycle will retry
   }
 
   async getProfileChangelogs(

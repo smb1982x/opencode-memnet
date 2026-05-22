@@ -38,76 +38,83 @@ export async function performAutoCapture(
       return;
     }
 
-    const response = await ctx.client.session.messages({
-      path: { id: sessionID },
-    });
+    try {
+      const response = await ctx.client.session.messages({
+        path: { id: sessionID },
+      });
 
-    if (!response.data) {
-      return;
-    }
-
-    const messages = response.data;
-
-    const promptIndex = messages.findIndex((m: any) => m.info?.id === prompt.messageId);
-    if (promptIndex === -1) {
-      return;
-    }
-
-    const aiMessages = messages.slice(promptIndex + 1);
-
-    if (aiMessages.length === 0) {
-      return;
-    }
-
-    const { textResponses, toolCalls } = extractAIContent(aiMessages);
-
-    if (textResponses.length === 0 && toolCalls.length === 0) {
-      return;
-    }
-
-    const tags = await getTags(directory);
-    const latestMemory = await getLatestProjectMemory(tags.project.tag);
-
-    const context = buildMarkdownContext(prompt.content, textResponses, toolCalls, latestMemory);
-
-    const summaryResult = await generateSummary(context, sessionID, prompt.content);
-
-    if (!summaryResult || summaryResult.type === "skip") {
-      await promptRepo.deletePrompt(prompt.id);
-      return;
-    }
-
-    const result = await memoryClient.addMemory(summaryResult.summary, tags.project.tag, {
-      source: "auto-capture" as any,
-      type: summaryResult.type as any,
-      tags: summaryResult.tags,
-      sessionID,
-      promptId: prompt.id,
-      captureTimestamp: Date.now(),
-      displayName: tags.project.displayName,
-      userName: tags.project.userName,
-      userEmail: tags.project.userEmail,
-      projectPath: tags.project.projectPath,
-      projectName: tags.project.projectName,
-      gitRepoUrl: tags.project.gitRepoUrl,
-    });
-
-    if (result.success) {
-      await promptRepo.linkMemoryToPrompt(prompt.id, result.id);
-      await promptRepo.markAsCaptured(prompt.id);
-
-      if (CONFIG.showAutoCaptureToasts) {
-        await ctx.client?.tui
-          .showToast({
-            body: {
-              title: "Memory Captured",
-              message: "Project memory saved from conversation",
-              variant: "success",
-              duration: 3000,
-            },
-          })
-          .catch(() => {});
+      if (!response.data) {
+        return;
       }
+
+      const messages = response.data;
+
+      const promptIndex = messages.findIndex((m: any) => m.info?.id === prompt.messageId);
+      if (promptIndex === -1) {
+        return;
+      }
+
+      const aiMessages = messages.slice(promptIndex + 1);
+
+      if (aiMessages.length === 0) {
+        return;
+      }
+
+      const { textResponses, toolCalls } = extractAIContent(aiMessages);
+
+      if (textResponses.length === 0 && toolCalls.length === 0) {
+        return;
+      }
+
+      const tags = await getTags(directory);
+      const latestMemory = await getLatestProjectMemory(tags.project.tag);
+
+      const context = buildMarkdownContext(prompt.content, textResponses, toolCalls, latestMemory);
+
+      const summaryResult = await generateSummary(context, sessionID, prompt.content);
+
+      if (!summaryResult || summaryResult.type === "skip") {
+        await promptRepo.deletePrompt(prompt.id);
+        return;
+      }
+
+      const result = await memoryClient.addMemory(summaryResult.summary, tags.project.tag, {
+        source: "auto-capture" as any,
+        type: summaryResult.type as any,
+        tags: summaryResult.tags,
+        sessionID,
+        promptId: prompt.id,
+        captureTimestamp: Date.now(),
+        displayName: tags.project.displayName,
+        userName: tags.project.userName,
+        userEmail: tags.project.userEmail,
+        projectPath: tags.project.projectPath,
+        projectName: tags.project.projectName,
+        gitRepoUrl: tags.project.gitRepoUrl,
+      });
+
+      if (result.success) {
+        await promptRepo.linkMemoryToPrompt(prompt.id, result.id);
+        await promptRepo.markAsCaptured(prompt.id);
+
+        if (CONFIG.showAutoCaptureToasts) {
+          await ctx.client?.tui
+            .showToast({
+              body: {
+                title: "Memory Captured",
+                message: "Project memory saved from conversation",
+                variant: "success",
+                duration: 3000,
+              },
+            })
+            .catch(() => {});
+        }
+      }
+    } catch (err) {
+      await promptRepo.releasePrompt(prompt.id).catch((releaseErr) => {
+        log(`failed to release prompt ${prompt.id}: ${releaseErr}`);
+      });
+      throw err;
     }
   } finally {
     isCaptureRunning = false;
