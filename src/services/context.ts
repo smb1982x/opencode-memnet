@@ -51,12 +51,21 @@ async function getUserProfileContext(userId: string): Promise<string | null> {
     return null;
   }
 
-  const profileData: UserProfileData = JSON.parse(profile.profileData);
+  let profileData: UserProfileData;
+  try {
+    profileData = JSON.parse(profile.profileData);
+  } catch {
+    return null;
+  }
+
+  const preferences = profileData?.preferences ?? [];
+  const patterns = profileData?.patterns ?? [];
+  const workflows = profileData?.workflows ?? [];
   const parts: string[] = [];
 
-  if (profileData.preferences.length > 0) {
+  if (preferences.length > 0) {
     parts.push("User Preferences:");
-    profileData.preferences
+    preferences
       .sort((a: any, b: any) => b.confidence - a.confidence)
       .slice(0, 5)
       .forEach((pref: any) => {
@@ -64,9 +73,9 @@ async function getUserProfileContext(userId: string): Promise<string | null> {
       });
   }
 
-  if (profileData.patterns.length > 0) {
+  if (patterns.length > 0) {
     parts.push("\nUser Patterns:");
-    profileData.patterns
+    patterns
       .sort((a: any, b: any) => b.frequency - a.frequency)
       .slice(0, 5)
       .forEach((pattern: any) => {
@@ -74,9 +83,9 @@ async function getUserProfileContext(userId: string): Promise<string | null> {
       });
   }
 
-  if (profileData.workflows.length > 0) {
+  if (workflows.length > 0) {
     parts.push("\nUser Workflows:");
-    profileData.workflows
+    workflows
       .sort((a: any, b: any) => b.frequency - a.frequency)
       .slice(0, 3)
       .forEach((workflow: any) => {

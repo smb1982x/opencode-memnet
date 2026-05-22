@@ -31,6 +31,8 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
   let idleTimeout: Timer | null = null;
 
   if (!isConfigured()) {
+    log("Plugin not configured — skipping handler registration. Check your config.");
+    return {};
   }
 
   const GLOBAL_PLUGIN_WARMUP_KEY = Symbol.for("opencode-mem.plugin.warmedup");
@@ -140,10 +142,8 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
         await webServer.stop();
       }
       await memoryClient.close();
-      process.exit(0);
     } catch (error) {
       log("Shutdown error", { error: String(error) });
-      process.exit(1);
     }
   };
 
@@ -163,7 +163,10 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
         const userMessage = textParts.map((p) => p.text).join("\n");
         if (!userMessage.trim()) return;
 
-        await promptRepo.savePrompt(input.sessionID, output.message.id, directory, userMessage);
+        if (!isFullyPrivate(userMessage)) {
+          const sanitized = stripPrivateContent(userMessage);
+          await promptRepo.savePrompt(input.sessionID, output.message.id, directory, sanitized);
+        }
 
         const messagesResponse = await ctx.client.session.messages({
           path: { id: input.sessionID },

@@ -250,15 +250,20 @@ export class OpenAIChatCompletionProvider extends BaseAIProvider {
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => response.statusText);
+          const safeErrorText = this.config.apiKey
+            ? errorText.replaceAll(this.config.apiKey, "[REDACTED]")
+            : errorText;
+          const truncatedForLog =
+            safeErrorText.length > 500 ? safeErrorText.slice(0, 500) + "..." : safeErrorText;
           log("OpenAI Chat Completion API error", {
             provider: this.getProviderName(),
             model: this.config.model,
             status: response.status,
-            error: errorText,
+            error: truncatedForLog,
             iteration: iterations,
           });
 
-          let errorMessage = `API error: ${response.status} - ${errorText}`;
+          let errorMessage = `API error: ${response.status} - ${safeErrorText}`;
 
           if (
             response.status === 400 &&

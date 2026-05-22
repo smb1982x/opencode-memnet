@@ -95,8 +95,11 @@ function rowToMemoryRecord(row: any): MemoryRecord {
   const parseVector = (v: unknown): Float32Array => {
     if (v instanceof Float32Array) return v;
     if (typeof v === "string") {
-      const nums = JSON.parse(v);
-      return new Float32Array(nums);
+      try {
+        return new Float32Array(JSON.parse(v));
+      } catch {
+        return new Float32Array(0);
+      }
     }
     if (v instanceof Uint8Array) {
       return new Float32Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
@@ -173,6 +176,7 @@ function computeWeightedScores(
       projectName: row.project_name ?? undefined,
       gitRepoUrl: row.git_repo_url ?? undefined,
       isPinned: row.is_pinned ?? false,
+      createdAt: row.created_at != null ? Number(row.created_at) : undefined,
     };
   });
 

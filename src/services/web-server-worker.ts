@@ -12,10 +12,6 @@ import {
   handleStats,
   handlePinMemory,
   handleUnpinMemory,
-  handleRunCleanup,
-  handleRunDeduplication,
-  handleDetectMigration,
-  handleRunMigration,
   handleDetectTagMigration,
   handleRunTagMigrationBatch,
   handleGetTagMigrationProgress,
@@ -152,21 +148,6 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse(result);
     }
 
-    if (path === "/api/cleanup" && method === "POST") {
-      const result = await handleRunCleanup();
-      return jsonResponse(result);
-    }
-
-    if (path === "/api/deduplicate" && method === "POST") {
-      const result = await handleRunDeduplication();
-      return jsonResponse(result);
-    }
-
-    if (path === "/api/migration/detect" && method === "GET") {
-      const result = await handleDetectMigration();
-      return jsonResponse(result);
-    }
-
     if (path === "/api/migration/tags/detect" && method === "GET") {
       const result = await handleDetectTagMigration();
       return jsonResponse(result);
@@ -181,16 +162,6 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (path === "/api/migration/tags/progress" && method === "GET") {
       const result = await handleGetTagMigrationProgress();
-      return jsonResponse(result);
-    }
-
-    if (path === "/api/migration/run" && method === "POST") {
-      const body = (await req.json()) as any;
-      const strategy = body.strategy || "fresh-start";
-      if (strategy !== "fresh-start" && strategy !== "re-embed") {
-        return jsonResponse({ success: false, error: "Invalid strategy" });
-      }
-      const result = await handleRunMigration(strategy);
       return jsonResponse(result);
     }
 

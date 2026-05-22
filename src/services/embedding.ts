@@ -81,6 +81,13 @@ export class EmbeddingService {
 
     let result: Float32Array;
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (CONFIG.embeddingApiKey) {
+      headers["Authorization"] = `Bearer ${CONFIG.embeddingApiKey}`;
+    }
+
     if (side === "left") {
       // For remote API with left truncation, pass truncate_prompt_tokens and try to avoid
       // app-side truncation if possible (let the server do it).
@@ -88,10 +95,7 @@ export class EmbeddingService {
       // the beginning trimmed. We send truncate_prompt_tokens so the API can further truncate.
       const response = await fetch(`${CONFIG.embeddingApiUrl}/embeddings`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${CONFIG.embeddingApiKey}`,
-        },
+        headers,
         body: JSON.stringify({
           input: text.length > effectiveText.length ? effectiveText : text,
           model: CONFIG.embeddingModel,
@@ -104,15 +108,15 @@ export class EmbeddingService {
       }
 
       const data: any = await response.json();
+      if (!Array.isArray(data.data) || data.data.length === 0) {
+        throw new Error("Embedding API returned empty data array");
+      }
       result = new Float32Array(data.data[0].embedding);
     } else {
       // Right truncation: app-side already done, do not send truncate_prompt_tokens
       const response = await fetch(`${CONFIG.embeddingApiUrl}/embeddings`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${CONFIG.embeddingApiKey}`,
-        },
+        headers,
         body: JSON.stringify({
           input: effectiveText,
           model: CONFIG.embeddingModel,
@@ -124,6 +128,9 @@ export class EmbeddingService {
       }
 
       const data: any = await response.json();
+      if (!Array.isArray(data.data) || data.data.length === 0) {
+        throw new Error("Embedding API returned empty data array");
+      }
       result = new Float32Array(data.data[0].embedding);
     }
 

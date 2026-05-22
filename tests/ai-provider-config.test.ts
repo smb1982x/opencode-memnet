@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildMemoryProviderConfig } from "../src/services/ai/provider-config.js";
 import { OpenAIChatCompletionProvider } from "../src/services/ai/providers/openai-chat-completion.js";
-import { OpenAIResponsesProvider } from "../src/services/ai/providers/openai-responses.js";
 import type { ChatCompletionTool } from "../src/services/ai/tools/tool-schema.js";
 
 const toolSchema: ChatCompletionTool = {
@@ -205,33 +204,5 @@ describe("AI provider config", () => {
 
     expect(appendedLog).toContain('"provider":"openai-chat"');
     expect(appendedLog).toContain('"model":"gpt-5-nano"');
-  });
-
-  it("never sends temperature for openai-responses", async () => {
-    let capturedBody: Record<string, unknown> | undefined;
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      capturedBody = JSON.parse(String(init?.body ?? "{}"));
-      return {
-        ok: false,
-        status: 400,
-        statusText: "Bad Request",
-        text: async () => "bad request",
-      } as Response;
-    }) as typeof fetch;
-
-    const provider = new OpenAIResponsesProvider(
-      {
-        model: "gpt-5-nano",
-        apiUrl: "https://api.openai.com/v1",
-        apiKey: "sk-test",
-        memoryTemperature: false,
-      },
-      new FakeSessionManager() as any
-    );
-
-    await provider.executeToolCall("system", "user", toolSchema, "session-id");
-
-    expect(capturedBody).toBeDefined();
-    expect(capturedBody?.temperature).toBeUndefined();
   });
 });

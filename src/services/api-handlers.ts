@@ -385,7 +385,11 @@ export async function handleUpdateMemory(
       type: data.type || existingMemory.type,
       createdAt: existingMemory.createdAt,
       updatedAt: Date.now(),
-      metadata: existingMemory.metadata ? JSON.stringify(existingMemory.metadata) : undefined,
+      metadata: existingMemory.metadata
+        ? typeof existingMemory.metadata === "string"
+          ? existingMemory.metadata
+          : JSON.stringify(existingMemory.metadata)
+        : undefined,
       displayName: existingMemory.displayName,
       userName: existingMemory.userName,
       userEmail: existingMemory.userEmail,
@@ -498,7 +502,7 @@ export async function handleSearch(
       content: r.memory,
       memoryType: r.metadata?.type,
       tags: r.tags,
-      createdAt: safeToISOString(r.metadata?.createdAt),
+      createdAt: safeToISOString(r.createdAt),
       updatedAt: r.metadata?.updatedAt ? safeToISOString(r.metadata.updatedAt) : undefined,
       similarity: r.similarity,
       metadata: r.metadata,
@@ -651,58 +655,6 @@ export async function handleUnpinMemory(id: string): Promise<ApiResponse<void>> 
   }
 }
 
-export async function handleRunCleanup(): Promise<
-  ApiResponse<{ deletedCount: number; userCount: number; projectCount: number }>
-> {
-  return {
-    success: false,
-    error:
-      "Cleanup service was removed along with the SQLite backend. " +
-      "Use Postgres-native retention policies instead.",
-  };
-}
-
-export async function handleRunDeduplication(): Promise<
-  ApiResponse<{ exactDuplicatesDeleted: number; nearDuplicateGroups: any[] }>
-> {
-  return {
-    success: false,
-    error:
-      "Deduplication service was removed along with the SQLite backend. " +
-      "Use Postgres-native deduplication or application-level logic instead.",
-  };
-}
-
-export async function handleDetectMigration(): Promise<
-  ApiResponse<{
-    needsMigration: boolean;
-    configDimensions: number;
-    configModel: string;
-    shardMismatches: any[];
-  }>
-> {
-  return {
-    success: false,
-    error: "Migration service has been removed (SQLite backend no longer supported).",
-  };
-}
-
-export async function handleRunMigration(_strategy: "fresh-start" | "re-embed"): Promise<
-  ApiResponse<{
-    success: boolean;
-    strategy: string;
-    deletedShards: number;
-    reEmbeddedMemories: number;
-    duration: number;
-    error?: string;
-  }>
-> {
-  return {
-    success: false,
-    error: "Migration service has been removed (SQLite backend no longer supported).",
-  };
-}
-
 export async function handleDeletePrompt(
   id: string,
   cascade: boolean = false
@@ -808,9 +760,9 @@ export async function handleGetProfileChangelog(
 export async function handleGetProfileSnapshot(changelogId: string): Promise<ApiResponse<any>> {
   try {
     if (!changelogId) return { success: false, error: "changelogId is required" };
-    const changelogs = await profileRepo.getProfileChangelogs("", 1000);
-    const changelog = changelogs.find((c) => c.id === changelogId);
+    const changelog = await profileRepo.getChangelogById(changelogId);
     if (!changelog) return { success: false, error: "Changelog not found" };
+    const changelogs = await profileRepo.getProfileChangelogs(changelog.profileId, 1000);
     const profileData = JSON.parse(changelog.profileDataSnapshot);
     return {
       success: true,
@@ -886,6 +838,14 @@ export async function handleRunTagMigrationBatch(
   batchSize: number = 5
 ): Promise<ApiResponse<{ processed: number; total: number; hasMore: boolean }>> {
   try {
+    migrationProgress = {
+      processed: 0,
+      total: 0,
+      currentBatch: 0,
+      totalBatches: 0,
+      isComplete: false,
+      errors: [],
+    };
     const { AIProviderFactory } = await import("./ai/ai-provider-factory.js");
     const { buildMemoryProviderConfig } = await import("./ai/provider-config.js");
     const providerConfig = buildMemoryProviderConfig(CONFIG, {
@@ -898,11 +858,8 @@ export async function handleRunTagMigrationBatch(
       record.containerTag.includes("_project_")
     );
 
-    if (migrationProgress.total === 0) {
-      migrationProgress.total = allRecords.length;
-      migrationProgress.totalBatches = Math.ceil(allRecords.length / batchSize);
-      migrationProgress.isComplete = false;
-    }
+    migrationProgress.total = allRecords.length;
+    migrationProgress.totalBatches = Math.ceil(allRecords.length / batchSize);
 
     let batchProcessed = 0;
     const startIdx = migrationProgress.processed;

@@ -51,7 +51,7 @@ interface OpenCodeMemConfig {
   autoCaptureMaxIterations?: number;
   autoCaptureIterationTimeout?: number;
   autoCaptureLanguage?: string;
-  memoryProvider?: "openai-chat" | "openai-responses" | "anthropic";
+  memoryProvider?: "openai-chat";
   memoryModel?: string;
   memoryApiUrl?: string;
   memoryApiKey?: string;
@@ -120,7 +120,7 @@ const DEFAULTS: Required<
   memoryModel?: string;
   memoryApiUrl?: string;
   memoryApiKey?: string;
-  memoryProvider?: "openai-chat" | "openai-responses" | "anthropic";
+  memoryProvider?: "openai-chat";
   memoryTemperature?: number | false;
   memoryExtraParams?: Record<string, unknown>;
   opencodeProvider?: string;
@@ -209,7 +209,10 @@ function loadConfigFromPaths(paths: string[]): OpenCodeMemConfig {
         const content = readFileSync(path, "utf-8");
         const json = stripJsoncComments(content);
         return JSON.parse(json) as OpenCodeMemConfig;
-      } catch {}
+      } catch (err) {
+        // Log the error instead of silently returning empty config
+        console.warn("[config] Failed to parse config file:", path, String(err));
+      }
     }
   }
   return {};
@@ -352,9 +355,9 @@ const CONFIG_TEMPLATE = `{
 
   "autoCaptureEnabled": true,
 
-  // Provider type: "openai-chat" | "openai-responses" | "anthropic"
-  // Note: "openai-chat" is a generic OpenAI API-compatible mode.
-  // Any service that follows the OpenAI Chat Completions API can use it via custom "memoryApiUrl".
+   // Provider type: "openai-chat"
+   // Note: "openai-chat" is a generic OpenAI API-compatible mode.
+   // Any service that follows the OpenAI Chat Completions API can use it via custom "memoryApiUrl".
   "memoryProvider": "openai-chat",
 
   // REQUIRED for auto-capture (all 3 must be set):
@@ -384,25 +387,13 @@ const CONFIG_TEMPLATE = `{
   //   "memoryApiUrl": "https://api.deepseek.com/v1"
   //   "memoryApiKey": "sk-..."
 
-  // OpenAI Responses API (recommended, with session support):
-  //   "memoryProvider": "openai-responses"
-  //   "memoryModel": "gpt-4o"
-  //   "memoryApiUrl": "https://api.openai.com/v1"
-  //   "memoryApiKey": "sk-..."
-
-  // Anthropic (with session support):
-  //   "memoryProvider": "anthropic"
-  //   "memoryModel": "claude-3-5-haiku-20241022"
-  //   "memoryApiUrl": "https://api.anthropic.com/v1"
-  //   "memoryApiKey": "sk-ant-..."
-
   // Groq (OpenAI-compatible, use openai-chat provider):
   //   "memoryProvider": "openai-chat"
   //   "memoryModel": "llama-3.3-70b-versatile"
   //   "memoryApiUrl": "https://api.groq.com/openai/v1"
   //   "memoryApiKey": "gsk_..."
 
-  // Maximum iterations for multi-turn AI analysis (for openai-responses and anthropic)
+  // Maximum iterations for multi-turn AI analysis
   "autoCaptureMaxIterations": 5,
 
   // Timeout per iteration in milliseconds (30 seconds default)
@@ -526,7 +517,7 @@ function getEmbeddingDimensions(model: string): number {
     "voyage-3-lite": 512,
     "voyage-code-3": 1024,
   };
-  return dimensionMap[model] || 1024;
+  return dimensionMap[model] || DEFAULTS.embeddingDimensions;
 }
 
 function buildConfig(fileConfig: OpenCodeMemConfig) {
@@ -550,10 +541,7 @@ function buildConfig(fileConfig: OpenCodeMemConfig) {
     autoCaptureIterationTimeout:
       fileConfig.autoCaptureIterationTimeout ?? DEFAULTS.autoCaptureIterationTimeout,
     autoCaptureLanguage: fileConfig.autoCaptureLanguage,
-    memoryProvider: (fileConfig.memoryProvider ?? "openai-chat") as
-      | "openai-chat"
-      | "openai-responses"
-      | "anthropic",
+    memoryProvider: (fileConfig.memoryProvider ?? "openai-chat") as "openai-chat",
     memoryModel: fileConfig.memoryModel,
     memoryApiUrl: fileConfig.memoryApiUrl,
     memoryApiKey: resolveSecretValue(fileConfig.memoryApiKey),
@@ -652,6 +640,10 @@ function validateConfig(): string[] {
     );
   }
 
+  if (!CONFIG.embeddingApiKey) {
+    errors.push("embeddingApiKey is required. Set it in config or via OPENAI_API_KEY env var.");
+  }
+
   return errors;
 }
 
@@ -665,7 +657,23 @@ export function initConfig(directory: string): void {
   ];
   const globalConfig = loadConfigFromPaths(CONFIG_FILES);
   const projectConfig = loadConfigFromPaths(projectPaths);
+  const NESTED_KEYS = [
+    "postgres",
+    "embeddingMaxTokens",
+    "embeddingTruncationSide",
+    "memory",
+    "compaction",
+    "chatMessage",
+  ] as const;
+
   const merged: OpenCodeMemConfig = { ...globalConfig, ...projectConfig };
+  for (const key of NESTED_KEYS) {
+    const g = globalConfig[key];
+    const p = projectConfig[key];
+    if (g && p) {
+      (merged as Record<string, unknown>)[key] = { ...g, ...p };
+    }
+  }
   CONFIG = buildConfig(merged);
   _configErrors = validateConfig();
 }

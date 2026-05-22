@@ -109,6 +109,7 @@ export class LocalMemoryClient {
   async close(): Promise<void> {
     await this.memoryRepo.close();
     this.isInitialized = false;
+    this.initPromise = null;
   }
 
   async searchMemories(query: string, containerTag: string, scope: MemoryScope = "project") {

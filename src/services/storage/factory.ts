@@ -6,6 +6,7 @@
  */
 
 import { CONFIG } from "../../config.js";
+import { mergeProfileData as sharedMergeProfileData } from "./postgres/profile-utils.js";
 import type {
   AISessionRepository,
   AIMessageRow,
@@ -333,102 +334,16 @@ class PostgresUserProfileRepositoryLazy implements UserProfileRepository {
   ): Promise<UserProfileChangelogRow[]> {
     return (await this.repo()).getProfileChangelogs(profileId, limit);
   }
+  async getChangelogById(changelogId: string): Promise<UserProfileChangelogRow | null> {
+    return (await this.repo()).getChangelogById(changelogId);
+  }
 
   mergeProfileData(existing: UserProfileData, updates: Partial<UserProfileData>): UserProfileData {
-    // Synchronous: inline the same pure merge logic as PostgresUserProfileRepository.
-    const ensureArray = (val: unknown): any[] => {
-      if (typeof val === "string") {
-        try {
-          const parsed = JSON.parse(val);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
-      }
-      return Array.isArray(val) ? val : [];
-    };
-
-    const merged: UserProfileData = {
-      preferences: ensureArray(existing?.preferences),
-      patterns: ensureArray(existing?.patterns),
-      workflows: ensureArray(existing?.workflows),
-    };
-
-    if (updates.preferences) {
-      const incomingPrefs = ensureArray(updates.preferences);
-      for (const newPref of incomingPrefs) {
-        const existingIndex = merged.preferences.findIndex(
-          (p) => p.category === newPref.category && p.description === newPref.description
-        );
-        if (existingIndex >= 0) {
-          const existingItem = merged.preferences[existingIndex];
-          if (existingItem) {
-            merged.preferences[existingIndex] = {
-              ...newPref,
-              confidence: Math.min(1, (existingItem.confidence || 0) + 0.1),
-              evidence: [
-                ...new Set([
-                  ...ensureArray(existingItem.evidence),
-                  ...ensureArray(newPref.evidence),
-                ]),
-              ].slice(0, 5),
-              lastUpdated: Date.now(),
-            };
-          }
-        } else {
-          merged.preferences.push({ ...newPref, lastUpdated: Date.now() });
-        }
-      }
-      merged.preferences.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-      merged.preferences = merged.preferences.slice(0, CONFIG.userProfileMaxPreferences);
-    }
-
-    if (updates.patterns) {
-      const incomingPatterns = ensureArray(updates.patterns);
-      for (const newPattern of incomingPatterns) {
-        const existingIndex = merged.patterns.findIndex(
-          (p) => p.category === newPattern.category && p.description === newPattern.description
-        );
-        if (existingIndex >= 0) {
-          const existingItem = merged.patterns[existingIndex];
-          if (existingItem) {
-            merged.patterns[existingIndex] = {
-              ...newPattern,
-              frequency: (existingItem.frequency || 1) + 1,
-              lastSeen: Date.now(),
-            };
-          }
-        } else {
-          merged.patterns.push({ ...newPattern, frequency: 1, lastSeen: Date.now() });
-        }
-      }
-      merged.patterns.sort((a, b) => (b.frequency || 0) - (a.frequency || 0));
-      merged.patterns = merged.patterns.slice(0, CONFIG.userProfileMaxPatterns);
-    }
-
-    if (updates.workflows) {
-      const incomingWorkflows = ensureArray(updates.workflows);
-      for (const newWorkflow of incomingWorkflows) {
-        const existingIndex = merged.workflows.findIndex(
-          (w) => w.description === newWorkflow.description
-        );
-        if (existingIndex >= 0) {
-          const existingItem = merged.workflows[existingIndex];
-          if (existingItem) {
-            merged.workflows[existingIndex] = {
-              ...newWorkflow,
-              frequency: (existingItem.frequency || 1) + 1,
-            };
-          }
-        } else {
-          merged.workflows.push({ ...newWorkflow, frequency: 1 });
-        }
-      }
-      merged.workflows.sort((a, b) => (b.frequency || 0) - (a.frequency || 0));
-      merged.workflows = merged.workflows.slice(0, CONFIG.userProfileMaxWorkflows);
-    }
-
-    return merged;
+    return sharedMergeProfileData(existing, updates, {
+      maxPreferences: CONFIG.userProfileMaxPreferences,
+      maxPatterns: CONFIG.userProfileMaxPatterns,
+      maxWorkflows: CONFIG.userProfileMaxWorkflows,
+    });
   }
 }
 

@@ -254,6 +254,7 @@ export interface UserProfileRepository {
   deleteProfile(profileId: string): Promise<void>;
   applyConfidenceDecay(profileId: string): Promise<void>;
   getProfileChangelogs(profileId: string, limit?: number): Promise<UserProfileChangelogRow[]>;
+  getChangelogById(changelogId: string): Promise<UserProfileChangelogRow | null>;
 
   /**
    * Merge incoming profile data into the existing data, applying

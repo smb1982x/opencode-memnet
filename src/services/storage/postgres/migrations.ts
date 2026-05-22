@@ -328,6 +328,9 @@ export const migrations: Migration[] = [
 
 // ── Runner ──
 
+/** Module-level guard ensuring migrations execute at most once per process. */
+let migrationsRun = false;
+
 /**
  * Ensure the `schema_migrations` table exists (idempotent) and return the
  * set of already-applied migration versions.
@@ -352,6 +355,9 @@ async function getAppliedVersions(sql: SqlClient): Promise<Set<number>> {
  * If omitted, the default singleton client is used via `getPostgresClient()`.
  */
 export async function runPostgresMigrations(sql?: SqlClient): Promise<void> {
+  // Guard: ensure migrations run at most once per process lifetime.
+  if (migrationsRun) return;
+
   // Lazy import to avoid instantiation until actually needed.
   const { getPostgresClient } = await import("./client.js");
   const client = sql ?? getPostgresClient();
@@ -362,6 +368,7 @@ export async function runPostgresMigrations(sql?: SqlClient): Promise<void> {
 
   if (pending.length === 0) {
     log("[postgres/migrate] All migrations already applied");
+    migrationsRun = true;
     return;
   }
 
@@ -399,4 +406,5 @@ export async function runPostgresMigrations(sql?: SqlClient): Promise<void> {
   }
 
   log("[postgres/migrate] All pending migrations applied successfully");
+  migrationsRun = true;
 }
