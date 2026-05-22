@@ -9,6 +9,22 @@
 - **`src/index.ts`** — primary OpenCode plugin factory; wires configuration, chat hooks, tools, event handlers, memory injection, auto-capture, profile learning, and web server startup.
 - **`src/config.ts`** — configuration loader/normalizer for global and project-local `opencode-mem` JSON/JSONC files, defaults, path expansion, and secret resolution. Validates required fields: `postgres.url`, `embeddingApiUrl`, `embeddingModel`.
 
+## Directory Map
+
+| Directory                        | Responsibility Summary                                                                                                                                             | Detailed Map                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `src/`                           | Plugin entry surface: ESM export (`plugin.ts`), lifecycle orchestration (`index.ts`), configuration loader with JSONC merging and secret resolution (`config.ts`). | [View Map](src/codemap.md)                           |
+| `src/types/`                     | Shared type contracts: `MemoryType`, `MemoryMetadata`, `AIProviderType`. Single barrel file.                                                                       | [View Map](src/types/codemap.md)                     |
+| `src/web/`                       | Management WebUI: vanilla JS SPA for browsing, searching, and managing memories and user profiles with prompt→memory linked views.                                 | [View Map](src/web/codemap.md)                       |
+| `src/services/`                  | Core service layer: `LocalMemoryClient` facade, auto-capture pipeline, user-profile learning, HTTP API handlers, privacy/embedding/tags utilities.                 | [View Map](src/services/codemap.md)                  |
+| `src/services/ai/`               | AI provider abstraction: factory routes to OpenAI chat completions provider; opencode SDK structured-output integration; provider config resolution.               | [View Map](src/services/ai/codemap.md)               |
+| `src/services/ai/providers/`     | Provider implementations: `BaseAIProvider` abstract contract, `OpenAIChatCompletionProvider` with bounded tool-call iteration loops and session persistence.       | [View Map](src/services/ai/providers/codemap.md)     |
+| `src/services/ai/tools/`         | Tool schema contracts: `ChatCompletionTool` interface shared between tool definitions and provider implementations.                                                | [View Map](src/services/ai/tools/codemap.md)         |
+| `src/services/ai/validators/`    | AI output validation: `UserProfileValidator` with two-phase structural/semantic checks, accumulating-error pattern.                                                | [View Map](src/services/ai/validators/codemap.md)    |
+| `src/services/storage/`          | Storage abstraction: repository interfaces (`MemoryRepository`, etc.) and factory routing to Postgres implementations.                                             | [View Map](src/services/storage/codemap.md)          |
+| `src/services/storage/postgres/` | PostgreSQL + pgvector: lazy client singleton, HNSW vector search with weighted scoring, 10 schema migrations, atomic CRUD operations.                              | [View Map](src/services/storage/postgres/codemap.md) |
+| `src/services/user-profile/`     | Profile data model: typed `UserProfile`/`UserProfileData` interfaces and defensive JSON-parsing utilities (`safeArray`, `safeObject`).                             | [View Map](src/services/user-profile/codemap.md)     |
+
 ## Core Modules
 
 ### Embedding — `src/services/embedding.ts`
