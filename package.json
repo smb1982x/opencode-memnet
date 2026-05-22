@@ -11,12 +11,14 @@
       "types": "./dist/index.d.ts"
     },
     "./server": {
-      "import": "./dist/plugin.js",
+      "import": "./dist/server.js",
       "types": "./dist/index.d.ts"
     }
   },
   "scripts": {
     "build": "bunx tsc && mkdir -p dist/web && cp -r src/web/* dist/web/",
+    "start:server": "bun run dist/server.js",
+    "dev:server": "bun run --watch src/server.ts",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",

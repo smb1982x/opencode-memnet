@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "./logger.js";
-import { CONFIG } from "../config.js";
+import { AuthMiddleware } from "./auth.js";
 import {
   handleListTags,
   handleListMemories,
@@ -40,17 +40,13 @@ export class WebServer {
   private config: WebServerConfig;
   private isOwner: boolean = false;
   private startPromise: Promise<void> | null = null;
-  private healthCheckInterval: NodeJS.Timeout | null = null;
-  private onTakeoverCallback: (() => Promise<void>) | null = null;
   private readonly allowedOrigin: string;
+  private readonly auth: AuthMiddleware;
 
-  constructor(config: WebServerConfig) {
+  constructor(config: WebServerConfig, apiKey: string) {
     this.config = config;
-    this.allowedOrigin = config.allowedOrigin ?? CONFIG.webServerAllowedOrigin ?? "*";
-  }
-
-  setOnTakeoverCallback(callback: () => Promise<void>): void {
-    this.onTakeoverCallback = callback;
+    this.allowedOrigin = config.allowedOrigin ?? "*";
+    this.auth = new AuthMiddleware(apiKey);
   }
 
   async start(): Promise<void> {
@@ -63,10 +59,7 @@ export class WebServer {
   }
 
   private async _start(): Promise<void> {
-    if (!this.config.enabled) {
-      return;
-    }
-
+    if (!this.config.enabled) return;
     try {
       this.server = Bun.serve({
         port: this.config.port,
@@ -75,81 +68,12 @@ export class WebServer {
       });
       this.isOwner = true;
     } catch (error) {
-      const errorMsg = String(error);
-
-      if (
-        errorMsg.includes("EADDRINUSE") ||
-        errorMsg.includes("address already in use") ||
-        /Failed to start server.*Is port \d+ in use/.test(errorMsg)
-      ) {
-        this.isOwner = false;
-        this.server = null;
-        this.startHealthCheckLoop();
-      } else {
-        this.isOwner = false;
-        this.server = null;
-        log("Web server failed to start", { error: errorMsg });
-        throw error;
-      }
-    }
-  }
-
-  private startHealthCheckLoop(): void {
-    if (this.healthCheckInterval) {
-      return;
-    }
-
-    this.healthCheckInterval = setInterval(async () => {
-      const isAvailable = await this.checkServerAvailable();
-
-      if (!isAvailable) {
-        this.stopHealthCheckLoop();
-        await this.attemptTakeover();
-      }
-    }, 5000);
-  }
-
-  private stopHealthCheckLoop(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-  }
-
-  private async attemptTakeover(): Promise<void> {
-    // prevent thundering herd: multiple non-owners racing to bind port
-    const jitterMs = 500 + Math.random() * 1000;
-    await new Promise((resolve) => setTimeout(resolve, jitterMs));
-
-    if (await this.checkServerAvailable()) {
-      this.startHealthCheckLoop();
-      return;
-    }
-
-    try {
-      // Reset startPromise AFTER the await to prevent concurrent start()
-      await this._start();
-      this.startPromise = null;
-
-      if (this.isOwner) {
-        log("Web server takeover successful", { port: this.config.port });
-
-        if (this.onTakeoverCallback) {
-          try {
-            await this.onTakeoverCallback();
-          } catch (error) {
-            log("Takeover callback error", { error: String(error) });
-          }
-        }
-      }
-    } catch (error) {
-      this.startHealthCheckLoop();
+      log("Web server failed to start", { error: String(error) });
+      throw error;
     }
   }
 
   async stop(): Promise<void> {
-    this.stopHealthCheckLoop();
-
     if (!this.isOwner || !this.server) {
       return;
     }
@@ -164,24 +88,8 @@ export class WebServer {
     return this.server !== null;
   }
 
-  isServerOwner(): boolean {
-    return this.isOwner;
-  }
-
   getUrl(): string {
     return `http://${this.config.host}:${this.config.port}`;
-  }
-
-  async checkServerAvailable(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.getUrl()}/api/stats`, {
-        method: "GET",
-        signal: AbortSignal.timeout(2000),
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
   }
 
   private static readonly MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
@@ -216,20 +124,24 @@ export class WebServer {
     const path = url.pathname;
     const method = req.method;
 
-    try {
-      // Handle CORS preflight
-      if (method === "OPTIONS") {
-        const headers = new Headers();
-        headers.set("Access-Control-Allow-Origin", this.allowedOrigin);
-        headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        headers.set("Access-Control-Max-Age", "86400");
-        if (this.allowedOrigin !== "*") {
-          headers.set("Vary", "Origin");
-        }
-        return new Response(null, { status: 204, headers });
-      }
+    // CORS preflight (no auth required)
+    if (method === "OPTIONS") {
+      const headers = new Headers();
+      headers.set("Access-Control-Allow-Origin", this.allowedOrigin);
+      headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      headers.set("Access-Control-Max-Age", "86400");
+      if (this.allowedOrigin !== "*") headers.set("Vary", "Origin");
+      return new Response(null, { status: 204, headers });
+    }
 
+    // Auth: all /api/* routes (except health) require API key
+    if (path.startsWith("/api/") && path !== "/api/health") {
+      const authError = this.auth.authenticate(req);
+      if (authError) return authError;
+    }
+
+    try {
       if (path === "/" || path === "/index.html") {
         return this.serveStaticFile("index.html", "text/html");
       }
@@ -248,6 +160,11 @@ export class WebServer {
 
       if (path === "/favicon.ico") {
         return this.serveStaticFile("favicon.ico", "image/x-icon");
+      }
+
+      if (path === "/api/health" && method === "GET") {
+        const { handleHealth } = await import("./health-handler.js");
+        return this.jsonResponse(handleHealth());
       }
 
       if (path === "/api/tags" && method === "GET") {
@@ -403,6 +320,24 @@ export class WebServer {
         return this.jsonResponse(result);
       }
 
+      if (path === "/api/context/inject" && method === "POST") {
+        const body = await this.parseBody(req);
+        const result = await (await import("./api-handlers.js")).handleContextInject(body);
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/auto-capture" && method === "POST") {
+        const body = await this.parseBody(req);
+        const result = await (await import("./api-handlers.js")).handleAutoCapture(body);
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/user-profile/learn" && method === "POST") {
+        const body = await this.parseBody(req);
+        const result = await (await import("./api-handlers.js")).handleUserProfileLearn(body);
+        return this.jsonResponse(result);
+      }
+
       return new Response("Not Found", { status: 404 });
     } catch (error) {
       log("handleRequest: unhandled error", { error: String(error) });
@@ -464,8 +399,8 @@ export class WebServer {
   }
 }
 
-export async function startWebServer(config: WebServerConfig): Promise<WebServer> {
-  const server = new WebServer(config);
+export async function startWebServer(config: WebServerConfig, apiKey: string): Promise<WebServer> {
+  const server = new WebServer(config, apiKey);
   await server.start();
   return server;
 }

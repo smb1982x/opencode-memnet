@@ -1015,3 +1015,281 @@ export async function handleRunTagMigrationBatch(
     return { success: false, error: String(error) };
   }
 }
+
+// ── New endpoints for server-client architecture ────────────
+
+export async function handleContextInject(data: {
+  sessionID?: string;
+  projectTag: string;
+  userId?: string;
+  maxMemories?: number;
+  excludeCurrentSession?: boolean;
+  maxAgeDays?: number | null;
+}): Promise<
+  ApiResponse<{
+    context: string;
+    memories: Array<{ id: string; summary: string; createdAt: string; similarity: number }>;
+    profileInjected: boolean;
+  }>
+> {
+  try {
+    await ensureInit();
+
+    const maxMemories = data.maxMemories ?? CONFIG.chatMessage?.maxMemories ?? 3;
+    const excludeCurrentSession = data.excludeCurrentSession ?? true;
+    const maxAgeDays = data.maxAgeDays ?? null;
+
+    const { scope, hash } = extractScopeFromTag(data.projectTag);
+    const rows = await memoryRepo.list({
+      scope: scope as MemoryScopeKind,
+      scopeHash: hash,
+      containerTag: data.projectTag,
+      limit: maxMemories * 3,
+    });
+
+    let memories = rows.map((r) => ({
+      id: r.id,
+      summary: r.content,
+      createdAt: safeToISOString(r.createdAt),
+      similarity: 1.0,
+      _metadata: r.metadata,
+    }));
+
+    if (excludeCurrentSession && data.sessionID) {
+      memories = memories.filter((m: any) => {
+        try {
+          const meta = typeof m._metadata === "string" ? JSON.parse(m._metadata) : m._metadata;
+          return meta?.sessionID !== data.sessionID;
+        } catch {
+          return true;
+        }
+      });
+    }
+
+    if (maxAgeDays != null && maxAgeDays > 0) {
+      const cutoffDate = Date.now() - maxAgeDays * 86400000;
+      memories = memories.filter((m: any) => new Date(m.createdAt).getTime() > cutoffDate);
+    }
+
+    memories = memories.slice(0, maxMemories);
+
+    const parts: string[] = ["[MEMORY]"];
+    let profileInjected = false;
+
+    if (CONFIG.injectProfile && data.userId) {
+      const profile = await profileRepo.getActiveProfile(data.userId);
+      if (profile) {
+        try {
+          const profileData = JSON.parse(profile.profileData);
+          const preferences = (profileData?.preferences ?? []).sort(
+            (a: any, b: any) => b.confidence - a.confidence
+          );
+          const patterns = (profileData?.patterns ?? []).sort(
+            (a: any, b: any) => b.frequency - a.frequency
+          );
+          const workflows = profileData?.workflows ?? [];
+
+          if (preferences.length > 0) {
+            parts.push("\nUser Preferences:");
+            preferences.slice(0, 5).forEach((pref: any) => {
+              parts.push(`- [${pref.category}] ${pref.description}`);
+            });
+          }
+          if (patterns.length > 0) {
+            parts.push("\nUser Patterns:");
+            patterns.slice(0, 5).forEach((pat: any) => {
+              parts.push(`- [${pat.category}] ${pat.description}`);
+            });
+          }
+          if (workflows.length > 0) {
+            parts.push("\nUser Workflows:");
+            workflows.slice(0, 3).forEach((wf: any) => {
+              parts.push(`- ${wf.description}`);
+            });
+          }
+          profileInjected = true;
+        } catch {
+          // skip corrupt profile
+        }
+      }
+    }
+
+    if (memories.length > 0) {
+      parts.push("\nProject Knowledge:");
+      memories.forEach((m) => {
+        parts.push(`- ${m.summary}`);
+      });
+    }
+
+    const context = parts.length > 1 ? parts.join("\n") : "";
+
+    return {
+      success: true,
+      data: {
+        context,
+        memories: memories.map(({ _metadata, ...rest }) => rest),
+        profileInjected,
+      },
+    };
+  } catch (error) {
+    log("handleContextInject: error", { error: String(error) });
+    return { success: false, error: String(error) };
+  }
+}
+
+// Phase 3: Full implementation — was stub in Phase 2
+export async function handleAutoCapture(data: {
+  sessionID: string;
+  projectTag: string;
+  projectMetadata: {
+    displayName?: string;
+    userName?: string;
+    userEmail?: string;
+    projectPath?: string;
+    projectName?: string;
+    gitRepoUrl?: string;
+  };
+  conversationMessages: Array<{
+    role: string;
+    parts: Array<{ type: string; text?: string; tool?: string; state?: any }>;
+  }>;
+  userPrompt: string;
+  promptMessageId: string;
+}): Promise<ApiResponse<{ captured: boolean; memoryId?: string }>> {
+  try {
+    await ensureInit();
+    await embeddingService.warmup();
+
+    // Extract AI content from conversation messages
+    const textResponses: string[] = [];
+    const toolCalls: Array<{ name: string; input: string }> = [];
+
+    for (const msg of data.conversationMessages) {
+      if (msg.role !== "assistant") continue;
+      if (!Array.isArray(msg.parts)) continue;
+      for (const part of msg.parts) {
+        if (part.type === "text" && part.text?.trim()) {
+          textResponses.push(part.text.trim());
+        }
+        if (part.type === "tool") {
+          const name = part.tool || "unknown";
+          let input = "";
+          if (part.state?.input) {
+            const inputObj = part.state.input;
+            if (typeof inputObj === "string") {
+              input = inputObj;
+            } else if (typeof inputObj === "object") {
+              input = Object.entries(inputObj)
+                .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+                .join(", ");
+            }
+          }
+          if (input.length > 100) input = input.substring(0, 100) + "...";
+          toolCalls.push({ name, input });
+        }
+      }
+    }
+
+    if (textResponses.length === 0 && toolCalls.length === 0) {
+      return { success: true, data: { captured: false } };
+    }
+
+    // Get latest memory for context
+    let latestMemory: string | null = null;
+    const { scope, hash } = extractScopeFromTag(data.projectTag);
+    const recentRows = await memoryRepo.list({
+      scope: scope as MemoryScopeKind,
+      scopeHash: hash,
+      containerTag: data.projectTag,
+      limit: 1,
+    });
+    const firstRow = recentRows[0];
+    if (firstRow && firstRow.content) {
+      const content = firstRow.content;
+      latestMemory = content.length <= 500 ? content : content.substring(0, 500) + "...";
+    }
+
+    // Build AI context
+    const sections: string[] = [];
+    if (latestMemory) {
+      sections.push(`## Previous Memory Context\n---\n${latestMemory}\n---\n`);
+    }
+    sections.push(`## User Request\n---\n${data.userPrompt}\n---\n`);
+    if (textResponses.length > 0) {
+      sections.push(`## AI Response\n---\n${textResponses.join("\n\n")}\n---\n`);
+    }
+    if (toolCalls.length > 0) {
+      sections.push("## Tools Used\n---");
+      for (const tool of toolCalls) {
+        sections.push(`- ${tool.name}${tool.input ? `(${tool.input})` : ""}`);
+      }
+      sections.push("---\n");
+    }
+    const context = sections.join("\n");
+
+    // Generate summary via AI
+    const { generateSummary } = await import("./auto-capture-server.js");
+    const summaryResult = await generateSummary(context, data.sessionID, data.userPrompt);
+
+    if (!summaryResult || summaryResult.type === "skip") {
+      return { success: true, data: { captured: false } };
+    }
+
+    // Embed and store
+    const embeddingInput =
+      summaryResult.tags.length > 0
+        ? `${summaryResult.summary}\nTags: ${summaryResult.tags.join(", ")}`
+        : summaryResult.summary;
+
+    const vector = await embeddingService.embedWithTimeout(embeddingInput, { kind: "content" });
+    let tagsVector: Float32Array | undefined;
+    if (summaryResult.tags.length > 0) {
+      tagsVector = await embeddingService.embedWithTimeout(summaryResult.tags.join(", "), {
+        kind: "tags",
+      });
+    }
+
+    const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const now = Date.now();
+
+    await memoryRepo.insert({
+      id,
+      content: summaryResult.summary,
+      vector,
+      tagsVector,
+      containerTag: data.projectTag,
+      tags: summaryResult.tags.length > 0 ? summaryResult.tags.join(",") : undefined,
+      type: summaryResult.type as any,
+      createdAt: now,
+      updatedAt: now,
+      metadata: JSON.stringify({
+        source: "auto-capture",
+        sessionID: data.sessionID,
+        promptId: data.promptMessageId,
+        captureTimestamp: now,
+      }),
+      displayName: data.projectMetadata.displayName,
+      userName: data.projectMetadata.userName,
+      userEmail: data.projectMetadata.userEmail,
+      projectPath: data.projectMetadata.projectPath,
+      projectName: data.projectMetadata.projectName,
+      gitRepoUrl: data.projectMetadata.gitRepoUrl,
+    });
+
+    return { success: true, data: { captured: true, memoryId: id } };
+  } catch (error) {
+    log("handleAutoCapture: error", { error: String(error) });
+    return { success: false, error: "Internal server error" };
+  }
+}
+
+// Phase 2: Stub — full implementation in Phase 3
+export async function handleUserProfileLearn(
+  _data: any
+): Promise<ApiResponse<{ updated: boolean }>> {
+  return {
+    success: false,
+    error:
+      "Server-side profile learning not yet implemented. Use in-process plugin for profile learning.",
+  };
+}
