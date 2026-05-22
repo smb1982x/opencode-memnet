@@ -14,10 +14,11 @@ type ScenarioInput = {
 const tempDirs: string[] = [];
 const indexUrl = new URL("../src/index.js", import.meta.url).href;
 const clientUrl = new URL("../src/services/client.js", import.meta.url).href;
-const userProfileManagerUrl = new URL(
-  "../src/services/user-profile/user-profile-manager.js",
+const profileRepoUrl = new URL(
+  "../src/services/storage/postgres/profile-repository.js",
   import.meta.url
 ).href;
+const tagsUrl = new URL("../src/services/tags.js", import.meta.url).href;
 
 function runScenario(input: ScenarioInput) {
   const dir = mkdtempSync(join(tmpdir(), "opencode-mem-profile-runtime-"));
@@ -48,12 +49,16 @@ function cleanProfileData(profileData) {
   };
 }
 
-mock.module(${JSON.stringify(userProfileManagerUrl)}, () => ({
-  userProfileManager: {
-    getActiveProfile(userId) {
+mock.module(${JSON.stringify(profileRepoUrl)}, () => ({
+  PostgresUserProfileRepository: class {
+    async initialize() {}
+    async close() {}
+    async getActiveProfile(userId) {
       return profiles.get(userId) ?? null;
-    },
-    createProfile(userId, displayName, userName, userEmail, profileData) {
+    }
+    async getProfileById() { return null; }
+    async getAllActiveProfiles() { return []; }
+    async createProfile(userId, displayName, userName, userEmail, profileData, promptsAnalyzed) {
       const id = \`profile_\${profiles.size + 1}\`;
       profiles.set(userId, {
         id,
@@ -65,20 +70,23 @@ mock.module(${JSON.stringify(userProfileManagerUrl)}, () => ({
         version: 1,
         createdAt: Date.now(),
         lastAnalyzedAt: Date.now(),
-        totalPromptsAnalyzed: 0,
+        totalPromptsAnalyzed: promptsAnalyzed ?? 0,
         isActive: true,
       });
       changelogs.push({ profileId: id, version: 1 });
       return id;
-    },
-    updateProfile(profileId, profileData) {
+    }
+    async updateProfile(profileId, profileData, additionalPromptsAnalyzed, changeSummary) {
       for (const profile of profiles.values()) {
         if (profile.id === profileId) {
           profile.profileData = JSON.stringify(cleanProfileData(profileData));
           profile.version += 1;
         }
       }
-    },
+    }
+    async deleteProfile() {}
+    async applyConfidenceDecay() {}
+    async getProfileChangelogs() { return []; }
     mergeProfileData(existingData, newData) {
       const preferences = [...(existingData.preferences ?? [])];
       for (const pref of newData.preferences ?? []) {
@@ -95,13 +103,13 @@ mock.module(${JSON.stringify(userProfileManagerUrl)}, () => ({
         patterns: existingData.patterns ?? [],
         workflows: existingData.workflows ?? [],
       };
-    },
+    }
   },
 }));
 
 ${
   input.mockGitConfigUnavailable
-    ? `mock.module("${new URL("../src/services/tags.js", import.meta.url).href}", () => ({
+    ? `mock.module(${JSON.stringify(tagsUrl)}, () => ({
   getTags: () => ({
     user: {
       tag: "opencode_user_unknown",
@@ -199,6 +207,10 @@ function profileConfig(overrides: Record<string, unknown> = {}) {
     userNameOverride: "Test User",
     webServerEnabled: false,
     autoCaptureEnabled: false,
+    postgres: { url: "postgres://test:test@localhost:5432/test" },
+    embeddingApiUrl: "https://api.openai.com/v1",
+    embeddingModel: "text-embedding-3-small",
+    embeddingApiKey: "sk-test",
     ...overrides,
   };
 }
@@ -263,11 +275,10 @@ describe("memory tool profile runtime behavior", () => {
 
   it("errors when no user email can be resolved", () => {
     const result = runScenario({
-      config: {
-        storagePath: "./data",
-        webServerEnabled: false,
-        autoCaptureEnabled: false,
-      },
+      config: profileConfig({
+        userEmailOverride: undefined,
+        userNameOverride: undefined,
+      }),
       args: { mode: "profile", content: "Default Jira board is DOPS" },
       sessionID: "s5",
       mockGitConfigUnavailable: true,

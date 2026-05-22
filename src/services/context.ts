@@ -1,5 +1,6 @@
 import { CONFIG } from "../config.js";
-import { getUserProfileContext } from "./user-profile/profile-context.js";
+import { createUserProfileRepository } from "./storage/factory.js";
+import type { UserProfileRepository, UserProfileData } from "./storage/types.js";
 
 interface MemoryResultMinimal {
   similarity: number;
@@ -11,14 +12,14 @@ interface MemoriesResponseMinimal {
   results?: MemoryResultMinimal[];
 }
 
-export function formatContextForPrompt(
+export async function formatContextForPrompt(
   userId: string | null,
   projectMemories: MemoriesResponseMinimal
-): string {
+): Promise<string> {
   const parts: string[] = ["[MEMORY]"];
 
   if (CONFIG.injectProfile && userId) {
-    const profileContext = getUserProfileContext(userId);
+    const profileContext = await getUserProfileContext(userId);
     if (profileContext) {
       parts.push("\n" + profileContext);
     }
@@ -36,6 +37,55 @@ export function formatContextForPrompt(
 
   if (parts.length === 1) {
     return "";
+  }
+
+  return parts.join("\n");
+}
+
+async function getUserProfileContext(userId: string): Promise<string | null> {
+  const profileRepo: UserProfileRepository = createUserProfileRepository();
+
+  const profile = await profileRepo.getActiveProfile(userId);
+
+  if (!profile) {
+    return null;
+  }
+
+  const profileData: UserProfileData = JSON.parse(profile.profileData);
+  const parts: string[] = [];
+
+  if (profileData.preferences.length > 0) {
+    parts.push("User Preferences:");
+    profileData.preferences
+      .sort((a: any, b: any) => b.confidence - a.confidence)
+      .slice(0, 5)
+      .forEach((pref: any) => {
+        parts.push(`- [${pref.category}] ${pref.description}`);
+      });
+  }
+
+  if (profileData.patterns.length > 0) {
+    parts.push("\nUser Patterns:");
+    profileData.patterns
+      .sort((a: any, b: any) => b.frequency - a.frequency)
+      .slice(0, 5)
+      .forEach((pattern: any) => {
+        parts.push(`- [${pattern.category}] ${pattern.description}`);
+      });
+  }
+
+  if (profileData.workflows.length > 0) {
+    parts.push("\nUser Workflows:");
+    profileData.workflows
+      .sort((a: any, b: any) => b.frequency - a.frequency)
+      .slice(0, 3)
+      .forEach((workflow: any) => {
+        parts.push(`- ${workflow.description}`);
+      });
+  }
+
+  if (parts.length === 0) {
+    return null;
   }
 
   return parts.join("\n");

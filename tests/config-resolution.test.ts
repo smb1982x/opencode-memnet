@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import { initConfig, CONFIG } from "../src/config.js";
+import { initConfig, CONFIG, isConfigured, getConfigErrors } from "../src/config.js";
 
 describe("project-scoped config resolution", () => {
   let readSpy: ReturnType<typeof spyOn>;
@@ -68,7 +68,7 @@ describe("project-scoped config resolution", () => {
   });
 });
 
-describe("storageBackend and embeddingMaxTokens config resolution", () => {
+describe("required config validation", () => {
   let readSpy: ReturnType<typeof spyOn>;
   let existsSpy: ReturnType<typeof spyOn>;
 
@@ -78,23 +78,72 @@ describe("storageBackend and embeddingMaxTokens config resolution", () => {
     initConfig("/nonexistent-project");
   });
 
-  it("storageBackend defaults to sqlite", () => {
-    existsSpy = spyOn(fs, "existsSync").mockReturnValue(false);
-    initConfig("/no/config/project");
-    expect(CONFIG.storageBackend).toBe("sqlite");
-  });
-
-  it("storageBackend can be overridden to postgres", () => {
+  it("flags missing postgres.url", () => {
     existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
     readSpy = spyOn(fs, "readFileSync").mockImplementation(() => {
       return JSON.stringify({
-        storageBackend: "postgres",
-        postgres: { url: "postgres://user:pass@localhost:5432/testdb" },
+        embeddingApiUrl: "https://api.openai.com/v1",
+        embeddingModel: "text-embedding-3-small",
+        embeddingApiKey: "sk-test",
       }) as any;
     });
-    initConfig("/pg/project");
-    expect(CONFIG.storageBackend).toBe("postgres");
-    expect(CONFIG.postgres.url).toBe("postgres://user:pass@localhost:5432/testdb");
+    initConfig("/no-pg-url/project");
+    expect(isConfigured()).toBe(false);
+    expect(getConfigErrors().some((e) => e.includes("postgres.url"))).toBe(true);
+  });
+
+  it("flags missing embeddingApiUrl", () => {
+    existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
+    readSpy = spyOn(fs, "readFileSync").mockImplementation(() => {
+      return JSON.stringify({
+        postgres: { url: "postgres://user:pass@localhost:5432/testdb" },
+        embeddingModel: "text-embedding-3-small",
+        embeddingApiKey: "sk-test",
+      }) as any;
+    });
+    initConfig("/no-embed-url/project");
+    expect(isConfigured()).toBe(false);
+    expect(getConfigErrors().some((e) => e.includes("embeddingApiUrl"))).toBe(true);
+  });
+
+  it("flags missing embeddingModel", () => {
+    existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
+    readSpy = spyOn(fs, "readFileSync").mockImplementation(() => {
+      return JSON.stringify({
+        postgres: { url: "postgres://user:pass@localhost:5432/testdb" },
+        embeddingApiUrl: "https://api.openai.com/v1",
+        embeddingApiKey: "sk-test",
+      }) as any;
+    });
+    initConfig("/no-embed-model/project");
+    expect(isConfigured()).toBe(false);
+    expect(getConfigErrors().some((e) => e.includes("embeddingModel"))).toBe(true);
+  });
+
+  it("isConfigured returns true when all required fields are provided", () => {
+    existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
+    readSpy = spyOn(fs, "readFileSync").mockImplementation(() => {
+      return JSON.stringify({
+        postgres: { url: "postgres://user:pass@localhost:5432/testdb" },
+        embeddingApiUrl: "https://api.openai.com/v1",
+        embeddingModel: "text-embedding-3-small",
+        embeddingApiKey: "sk-test",
+      }) as any;
+    });
+    initConfig("/valid/project");
+    expect(isConfigured()).toBe(true);
+    expect(getConfigErrors()).toHaveLength(0);
+  });
+});
+
+describe("embeddingMaxTokens config resolution", () => {
+  let readSpy: ReturnType<typeof spyOn>;
+  let existsSpy: ReturnType<typeof spyOn>;
+
+  afterEach(() => {
+    readSpy?.mockRestore();
+    existsSpy?.mockRestore();
+    initConfig("/nonexistent-project");
   });
 
   it("embeddingMaxTokens can be partially overridden", () => {
@@ -117,30 +166,11 @@ describe("storageBackend and embeddingMaxTokens config resolution", () => {
     existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
     readSpy = spyOn(fs, "readFileSync").mockImplementation(() => {
       return JSON.stringify({
-        storageBackend: "postgres",
         postgres: { url: "env://TEST_PG_URL" },
       }) as any;
     });
     initConfig("/env/project");
     expect(CONFIG.postgres.url).toBe("postgres://envuser:envpass@localhost:5432/envdb");
     delete process.env.TEST_PG_URL;
-  });
-
-  it("throws if storageBackend is postgres and no url configured", () => {
-    existsSpy = spyOn(fs, "existsSync").mockReturnValue(true);
-    readSpy = spyOn(fs, "readFileSync").mockImplementation(() => {
-      return JSON.stringify({
-        storageBackend: "postgres",
-      }) as any;
-    });
-    expect(() => initConfig("/pg-no-url/project")).toThrow(
-      /storageBackend.*postgres.*no postgres\.url/i
-    );
-  });
-
-  it("does not throw if storageBackend is sqlite even with no postgres url", () => {
-    existsSpy = spyOn(fs, "existsSync").mockReturnValue(false);
-    expect(() => initConfig("/sqlite-ok/project")).not.toThrow();
-    expect(CONFIG.storageBackend).toBe("sqlite");
   });
 });

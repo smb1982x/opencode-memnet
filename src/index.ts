@@ -11,7 +11,6 @@ import { performUserProfileLearning } from "./services/user-memory-learning.js";
 import {
   createUserPromptRepository,
   createUserProfileRepository,
-  checkpointStorage,
 } from "./services/storage/factory.js";
 import { startWebServer, WebServer } from "./services/web-server.js";
 
@@ -220,7 +219,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
         };
 
         const userId = tags.user.userEmail || null;
-        const memoryContext = formatContextForPrompt(userId, projectMemories);
+        const memoryContext = await formatContextForPrompt(userId, projectMemories);
 
         if (memoryContext) {
           const contextPart: Part = {
@@ -496,9 +495,6 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
 
             if (webServer?.isServerOwner()) {
               await performUserProfileLearning(ctx, directory);
-              const { cleanupService } = await import("./services/cleanup-service.js");
-              if (await cleanupService.shouldRunCleanup()) await cleanupService.runCleanup();
-              await checkpointStorage();
             }
           } catch (error) {
             log("Idle processing error", { error: String(error) });

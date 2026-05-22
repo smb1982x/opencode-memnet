@@ -22,10 +22,6 @@ describe("config", () => {
       expect(CONFIG.storagePath).toContain(".opencode-mem");
     });
 
-    it("should default to Xenova/nomic-embed-text-v1 embedding model", () => {
-      expect(typeof CONFIG.embeddingModel).toBe("string");
-    });
-
     it("should have numeric embeddingDimensions", () => {
       expect(typeof CONFIG.embeddingDimensions).toBe("number");
       expect(CONFIG.embeddingDimensions).toBeGreaterThan(0);
@@ -46,10 +42,6 @@ describe("config", () => {
 
     it("should have webServerHost as a string", () => {
       expect(typeof CONFIG.webServerHost).toBe("string");
-    });
-
-    it("should have maxVectorsPerShard as a positive number", () => {
-      expect(CONFIG.maxVectorsPerShard).toBeGreaterThan(0);
     });
 
     it("should have compaction settings", () => {
@@ -73,8 +65,6 @@ describe("config", () => {
       expect(typeof CONFIG.autoCaptureEnabled).toBe("boolean");
       expect(typeof CONFIG.injectProfile).toBe("boolean");
       expect(typeof CONFIG.webServerEnabled).toBe("boolean");
-      expect(typeof CONFIG.autoCleanupEnabled).toBe("boolean");
-      expect(typeof CONFIG.deduplicationEnabled).toBe("boolean");
     });
 
     it("should expose memory scope config", () => {
@@ -95,10 +85,6 @@ describe("config", () => {
       expect(typeof CONFIG.showAutoCaptureToasts).toBe("boolean");
       expect(typeof CONFIG.showUserProfileToasts).toBe("boolean");
       expect(typeof CONFIG.showErrorToasts).toBe("boolean");
-    });
-
-    it("should default to sqlite storage backend", () => {
-      expect(CONFIG.storageBackend).toBe("sqlite");
     });
 
     it("should have postgres config with defaults", () => {
@@ -130,8 +116,8 @@ describe("config", () => {
   });
 
   describe("isConfigured", () => {
-    it("should return true", () => {
-      expect(isConfigured()).toBe(true);
+    it("should return false when required fields are missing", () => {
+      expect(isConfigured()).toBe(false);
     });
 
     it("should return a boolean", () => {

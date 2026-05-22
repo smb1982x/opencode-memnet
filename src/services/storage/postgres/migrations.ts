@@ -311,7 +311,7 @@ export const migrations: Migration[] = [
     description: "Set active embedding config",
     transactional: true,
     up: async (sql) => {
-      const modelName = CONFIG.embeddingModel;
+      const modelName = CONFIG.embeddingModel ?? "text-embedding";
       const dimensions = CONFIG.embeddingDimensions;
       const vectorType = CONFIG.postgres!.vectorType ?? "vector";
 

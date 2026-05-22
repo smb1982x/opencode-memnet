@@ -1,5 +1,5 @@
 import { BaseAIProvider, type ToolCallResult, applySafeExtraParams } from "./base-provider.js";
-import { AISessionManager } from "../session/ai-session-manager.js";
+import type { AISessionRepository } from "../../storage/types.js";
 import { ToolSchemaConverter, type ChatCompletionTool } from "../tools/tool-schema.js";
 import { log } from "../../logger.js";
 
@@ -23,11 +23,11 @@ interface ResponsesAPIOutput {
 }
 
 export class OpenAIResponsesProvider extends BaseAIProvider {
-  private aiSessionManager: AISessionManager;
+  private sessionRepo: AISessionRepository;
 
-  constructor(config: any, aiSessionManager: AISessionManager) {
+  constructor(config: any, sessionRepo: AISessionRepository) {
     super(config);
-    this.aiSessionManager = aiSessionManager;
+    this.sessionRepo = sessionRepo;
   }
 
   getProviderName(): string {
@@ -44,10 +44,10 @@ export class OpenAIResponsesProvider extends BaseAIProvider {
     toolSchema: ChatCompletionTool,
     sessionId: string
   ): Promise<ToolCallResult> {
-    let session = this.aiSessionManager.getSession(sessionId, "openai-responses");
+    let session = await this.sessionRepo.getSession(sessionId, "openai-responses");
 
     if (!session) {
-      session = this.aiSessionManager.createSession({
+      session = await this.sessionRepo.createSession({
         provider: "openai-responses",
         sessionId,
       });
@@ -117,8 +117,8 @@ export class OpenAIResponsesProvider extends BaseAIProvider {
         conversationId = data.conversation || conversationId;
 
         if (iterations === 1) {
-          const userSeq = this.aiSessionManager.getLastSequence(session.id) + 1;
-          this.aiSessionManager.addMessage({
+          const userSeq = (await this.sessionRepo.getLastSequence(session.id)) + 1;
+          await this.sessionRepo.addMessage({
             aiSessionId: session.id,
             sequence: userSeq,
             role: "user",
@@ -129,7 +129,7 @@ export class OpenAIResponsesProvider extends BaseAIProvider {
         const toolCall = this.extractToolCall(data, toolSchema.function.name);
 
         if (toolCall) {
-          this.aiSessionManager.updateSession(sessionId, "openai-responses", {
+          await this.sessionRepo.updateSession(sessionId, "openai-responses", {
             conversationId,
           });
 

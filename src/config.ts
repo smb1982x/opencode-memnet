@@ -59,16 +59,10 @@ interface OpenCodeMemConfig {
   memoryExtraParams?: Record<string, unknown>;
   opencodeProvider?: string;
   opencodeModel?: string;
-  vectorBackend?: "usearch-first" | "usearch" | "exact-scan";
   aiSessionRetentionDays?: number;
   webServerEnabled?: boolean;
   webServerPort?: number;
   webServerHost?: string;
-  maxVectorsPerShard?: number;
-  autoCleanupEnabled?: boolean;
-  autoCleanupRetentionDays?: number;
-  deduplicationEnabled?: boolean;
-  deduplicationSimilarityThreshold?: number;
   userProfileAnalysisInterval?: number;
   userProfileMaxPreferences?: number;
   userProfileMaxPatterns?: number;
@@ -78,7 +72,6 @@ interface OpenCodeMemConfig {
   showAutoCaptureToasts?: boolean;
   showUserProfileToasts?: boolean;
   showErrorToasts?: boolean;
-  storageBackend?: "sqlite" | "postgres";
   postgres?: {
     url?: string;
     ssl?: boolean | "require";
@@ -107,6 +100,7 @@ const DEFAULTS: Required<
     OpenCodeMemConfig,
     | "embeddingApiUrl"
     | "embeddingApiKey"
+    | "embeddingModel"
     | "memoryModel"
     | "memoryApiUrl"
     | "memoryApiKey"
@@ -122,6 +116,7 @@ const DEFAULTS: Required<
 > & {
   embeddingApiUrl?: string;
   embeddingApiKey?: string;
+  embeddingModel?: string;
   memoryModel?: string;
   memoryApiUrl?: string;
   memoryApiKey?: string;
@@ -130,7 +125,6 @@ const DEFAULTS: Required<
   memoryExtraParams?: Record<string, unknown>;
   opencodeProvider?: string;
   opencodeModel?: string;
-  vectorBackend?: "usearch-first" | "usearch" | "exact-scan";
   autoCaptureLanguage?: string;
   userEmailOverride?: string;
   userNameOverride?: string;
@@ -139,8 +133,7 @@ const DEFAULTS: Required<
   };
 } = {
   storagePath: join(DATA_DIR, "data"),
-  embeddingModel: "Xenova/nomic-embed-text-v1",
-  embeddingDimensions: 768,
+  embeddingDimensions: 1024,
   similarityThreshold: 0.6,
   maxMemories: 10,
   maxProfileItems: 5,
@@ -149,16 +142,10 @@ const DEFAULTS: Required<
   autoCaptureEnabled: true,
   autoCaptureMaxIterations: 5,
   autoCaptureIterationTimeout: 30000,
-  vectorBackend: "usearch-first",
   aiSessionRetentionDays: 7,
   webServerEnabled: true,
   webServerPort: 4747,
   webServerHost: "127.0.0.1",
-  maxVectorsPerShard: 50000,
-  autoCleanupEnabled: true,
-  autoCleanupRetentionDays: 30,
-  deduplicationEnabled: true,
-  deduplicationSimilarityThreshold: 0.9,
   userProfileAnalysisInterval: 10,
   userProfileMaxPreferences: 20,
   userProfileMaxPatterns: 15,
@@ -168,7 +155,6 @@ const DEFAULTS: Required<
   showAutoCaptureToasts: true,
   showUserProfileToasts: true,
   showErrorToasts: true,
-  storageBackend: "sqlite" as const,
   postgres: {
     ssl: "require" as const,
     maxConnections: 10,
@@ -233,113 +219,96 @@ const CONFIG_TEMPLATE = `{
   // ============================================
   // OpenCode Memory Plugin Configuration
   // ============================================
-  
-  // Storage location for vector database
+  //
+  // REQUIRED fields (plugin will not start without these):
+  //   - embeddingModel   — embedding model name at your API endpoint
+  //   - embeddingApiUrl  — OpenAI-compatible embedding API endpoint
+  //   - embeddingApiKey  — API key (or set OPENAI_API_KEY env var)
+  //   - postgres.url     — PostgreSQL connection URL
+  //
+  // ============================================
+
+  // General data directory (used for cache, user overrides, etc.)
   "storagePath": "~/.opencode-mem/data",
 
   "userEmailOverride": "",
   "userNameOverride": "",
-  
+
   // ============================================
-  // Embedding Model (for similarity search)
+  // Embedding Model (REQUIRED)
   // ============================================
-  
-  // Default: Nomic Embed v1 (768 dimensions, 8192 context, multilingual)
-  "embeddingModel": "Xenova/nomic-embed-text-v1",
-  
-  // Auto-detected dimensions (no need to set manually)
-  // "embeddingDimensions": 768,
-  
-  // Other recommended models:
-  // "embeddingModel": "Xenova/jina-embeddings-v2-base-en",  // 768 dims, English-only, 8192 context
-  // "embeddingModel": "Xenova/jina-embeddings-v2-small-en", // 512 dims, faster, 8192 context
-  // "embeddingModel": "Xenova/all-MiniLM-L6-v2",            // 384 dims, very fast, 512 context
-  // "embeddingModel": "Xenova/all-mpnet-base-v2",           // 768 dims, good quality, 512 context
-  
-   // Optional: Use OpenAI-compatible API for embeddings
-   // "embeddingApiUrl": "https://api.openai.com/v1",
-   // "embeddingApiKey": "sk-...",
-   // "embeddingModel": "text-embedding-3-small",  // 1536 dims, auto-detected
-   
-   // NOTE: If using a 1024-dimensional model deployment (e.g. nomic-embed-text-v1.5 via vLLM),
-   // set "embeddingDimensions": 1024 and "embeddingModel" explicitly. The default model
-   // (Xenova/nomic-embed-text-v1) outputs 768 dimensions.
-   
-   // ============================================
-   // Embedding Input Truncation Settings
-   // ============================================
-   
-   // Max input tokens per embedding kind (approximate; controls how much text is sent to the
-   // embedding model). These do NOT change the output vector dimensions.
-   // Approximate: ~4 characters per token.
-   // "embeddingMaxTokens": {
-   //   "content": 2048,
-   //   "tags": 256,
-   //   "query": 512,
-   //   "migration": 2048
-   // },
-   
-   // Truncation side: "right" keeps the beginning (app-side), "left" keeps the end.
-   // For remote APIs with "left", truncate_prompt_tokens is sent to let the server truncate.
-   // "embeddingTruncationSide": {
-   //   "content": "right",
-   //   "tags": "right",
-   //   "query": "right",
-   //   "migration": "right"
-   // },
-   
-   // ============================================
-   // Storage Backend Settings
-   // ============================================
-   
-   // Storage backend: "sqlite" (default) or "postgres".
-   // "storageBackend": "sqlite",
-   
-   // PostgreSQL connection settings (only used when storageBackend is "postgres").
-   // "postgres": {
-   //   // Connection URL (supports env:// and file:// secret references)
-   //   // "url": "env://DATABASE_URL",
-   //   "ssl": "require",
-   //   "maxConnections": 10,
-   //   "idleTimeoutSeconds": 30,
-   //   "connectTimeoutSeconds": 10,
-   //   "vectorType": "vector",
-   //   "hnswEfSearch": 128,
-   //   "hnswEfConstruction": 256
-   // },
-  
+
+  // REQUIRED: Name of the embedding model at your API endpoint.
+  // "embeddingModel": "text-embedding-3-small",
+
+  // REQUIRED: OpenAI-compatible embedding API endpoint.
+  // "embeddingApiUrl": "https://api.openai.com/v1",
+  // "embeddingApiKey": "sk-...",
+
+  // Embedding vector dimensions (default: 1024, auto-detected for known models).
+  // "embeddingDimensions": 1024,
+
+  // Recommended models:
+  // "text-embedding-3-small"      // OpenAI, 1536 dims
+  // "text-embedding-3-large"      // OpenAI, 3072 dims
+  // "text-embedding-ada-002"      // OpenAI, 1536 dims
+  // "embed-english-v3.0"          // Cohere, 1024 dims
+  // "embed-multilingual-v3.0"     // Cohere, 1024 dims
+  // "voyage-3"                    // Voyage AI, 1024 dims
+  // "voyage-code-3"               // Voyage AI, 1024 dims
+
+  // ============================================
+  // Embedding Input Truncation Settings
+  // ============================================
+
+  // Max input tokens per embedding kind (approximate; controls how much text is sent to the
+  // embedding model). These do NOT change the output vector dimensions.
+  // Approximate: ~4 characters per token.
+  // "embeddingMaxTokens": {
+  //   "content": 2048,
+  //   "tags": 256,
+  //   "query": 512,
+  //   "migration": 2048
+  // },
+
+  // Truncation side: "right" keeps the beginning (app-side), "left" keeps the end.
+  // For remote APIs with "left", truncate_prompt_tokens is sent to let the server truncate.
+  // "embeddingTruncationSide": {
+  //   "content": "right",
+  //   "tags": "right",
+  //   "query": "right",
+  //   "migration": "right"
+  // },
+
+  // ============================================
+  // PostgreSQL Connection (REQUIRED)
+  // ============================================
+
+  // "postgres": {
+  //   // Connection URL (supports env:// and file:// secret references)
+  //   // "url": "env://DATABASE_URL",
+  //   "ssl": "require",
+  //   "maxConnections": 10,
+  //   "idleTimeoutSeconds": 30,
+  //   "connectTimeoutSeconds": 10,
+  //   "vectorType": "vector",
+  //   "hnswEfSearch": 128,
+  //   "hnswEfConstruction": 256
+  // },
+
   // ============================================
   // Web Server Settings
   // ============================================
-  
+
   // Enable web UI for managing memories (accessible at http://localhost:4747)
   "webServerEnabled": true,
-  
+
   // Port for web UI server
   "webServerPort": 4747,
-  
+
   // Host address for web UI (use 127.0.0.1 for local only, 0.0.0.0 for network access)
   "webServerHost": "127.0.0.1",
-  
-  // ============================================
-  // Database Settings
-  // ============================================
-  
-  // Maximum vectors per database shard (auto-creates new shard when limit reached)
-  "maxVectorsPerShard": 50000,
-  
-  // Automatically delete old memories based on retention period
-  "autoCleanupEnabled": true,
-  
-  // Days to keep memories before auto-cleanup (only if autoCleanupEnabled is true)
-  "autoCleanupRetentionDays": 30,
-  
-  // Automatically detect and remove duplicate memories
-  "deduplicationEnabled": true,
-  
-   // Similarity threshold (0-1) for detecting duplicates (higher = stricter)
-   "deduplicationSimilarityThreshold": 0.90,
-   
+
   // ============================================
   // Memory Scope Settings
   // ============================================
@@ -376,18 +345,18 @@ const CONFIG_TEMPLATE = `{
    // ============================================
    // Auto-Capture Settings (REQUIRES EXTERNAL API)
    // ============================================
-  
+
   // IMPORTANT: Auto-capture ONLY works with external API
   // It runs in background without blocking your main session
   // Note: Ollama may not support tool calling. Use OpenAI, Anthropic, or Groq for best results.
-  
+
   "autoCaptureEnabled": true,
-  
+
   // Provider type: "openai-chat" | "openai-responses" | "anthropic"
   // Note: "openai-chat" is a generic OpenAI API-compatible mode.
   // Any service that follows the OpenAI Chat Completions API can use it via custom "memoryApiUrl".
   "memoryProvider": "openai-chat",
-  
+
   // REQUIRED for auto-capture (all 3 must be set):
   "memoryModel": "gpt-4o-mini",
   "memoryApiUrl": "https://api.openai.com/v1",
@@ -397,7 +366,7 @@ const CONFIG_TEMPLATE = `{
   // Direct value:        "sk-..."
   // From file:           "file://~/.config/litellm-key.txt"
   // From env variable:   "env://LITELLM_API_KEY"
-  
+
   // Examples for different providers:
   // Any OpenAI-compatible endpoint can use the "openai-chat" provider pattern below.
   // Common examples: DeepSeek, Qwen (via Alibaba Cloud ModelStudio),
@@ -414,31 +383,31 @@ const CONFIG_TEMPLATE = `{
   //   "memoryModel": "deepseek-chat"
   //   "memoryApiUrl": "https://api.deepseek.com/v1"
   //   "memoryApiKey": "sk-..."
-  
+
   // OpenAI Responses API (recommended, with session support):
   //   "memoryProvider": "openai-responses"
   //   "memoryModel": "gpt-4o"
   //   "memoryApiUrl": "https://api.openai.com/v1"
   //   "memoryApiKey": "sk-..."
-  
+
   // Anthropic (with session support):
   //   "memoryProvider": "anthropic"
   //   "memoryModel": "claude-3-5-haiku-20241022"
   //   "memoryApiUrl": "https://api.anthropic.com/v1"
   //   "memoryApiKey": "sk-ant-..."
-  
+
   // Groq (OpenAI-compatible, use openai-chat provider):
   //   "memoryProvider": "openai-chat"
   //   "memoryModel": "llama-3.3-70b-versatile"
   //   "memoryApiUrl": "https://api.groq.com/openai/v1"
   //   "memoryApiKey": "gsk_..."
-  
+
   // Maximum iterations for multi-turn AI analysis (for openai-responses and anthropic)
   "autoCaptureMaxIterations": 5,
-   
+
   // Timeout per iteration in milliseconds (30 seconds default)
   "autoCaptureIterationTimeout": 30000,
-   
+
   // Days to keep AI session history before cleanup
   "aiSessionRetentionDays": 7,
 
@@ -481,31 +450,31 @@ const CONFIG_TEMPLATE = `{
   // - User workflows (development habits, sequences, learning style)
   // - Skill level (overall and per-domain assessment)
   "userProfileAnalysisInterval": 10,
-  
+
   // Maximum number of preferences to keep in user profile (sorted by confidence)
   // Preferences are things like "prefers code without comments", "likes concise responses"
   "userProfileMaxPreferences": 20,
-  
+
   // Maximum number of patterns to keep in user profile (sorted by frequency)
   // Patterns are recurring topics like "often asks about database optimization"
   "userProfileMaxPatterns": 15,
-  
+
   // Maximum number of workflows to keep in user profile (sorted by frequency)
   // Workflows are sequences like "usually asks for tests after implementation"
   "userProfileMaxWorkflows": 10,
-  
+
   // Days before preference confidence starts to decay (if not reinforced)
   // Preferences that aren't seen again will gradually lose confidence and be removed
   "userProfileConfidenceDecayDays": 30,
-  
+
   // Number of profile versions to keep in changelog (for rollback/debugging)
   // Older versions are automatically cleaned up
   "userProfileChangelogRetentionCount": 5,
-  
+
   // ============================================
   // Search Settings
   // ============================================
-  
+
   // Minimum similarity score (0-1) for memory search results
   "similarityThreshold": 0.6,
 
@@ -515,7 +484,7 @@ const CONFIG_TEMPLATE = `{
   // ============================================
   // Advanced Settings
   // ============================================
-  
+
   // Inject user profile into AI context (preferences, patterns, workflows)
   "injectProfile": true
 }
@@ -537,23 +506,6 @@ ensureConfigExists();
 
 function getEmbeddingDimensions(model: string): number {
   const dimensionMap: Record<string, number> = {
-    // Local Xenova models
-    "Xenova/nomic-embed-text-v1": 768,
-    "Xenova/nomic-embed-text-v1-unsupervised": 768,
-    "Xenova/nomic-embed-text-v1-ablated": 768,
-    "Xenova/jina-embeddings-v2-base-en": 768,
-    "Xenova/jina-embeddings-v2-base-zh": 768,
-    "Xenova/jina-embeddings-v2-base-de": 768,
-    "Xenova/jina-embeddings-v2-small-en": 512,
-    "Xenova/all-MiniLM-L6-v2": 384,
-    "Xenova/all-MiniLM-L12-v2": 384,
-    "Xenova/all-mpnet-base-v2": 768,
-    "Xenova/bge-base-en-v1.5": 768,
-    "Xenova/bge-small-en-v1.5": 384,
-    "Xenova/gte-small": 384,
-    "Xenova/GIST-small-Embedding-v0": 384,
-    "Xenova/text-embedding-ada-002": 1536,
-
     // OpenAI API models
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
@@ -574,7 +526,7 @@ function getEmbeddingDimensions(model: string): number {
     "voyage-3-lite": 512,
     "voyage-code-3": 1024,
   };
-  return dimensionMap[model] || 768;
+  return dimensionMap[model] || 1024;
 }
 
 function buildConfig(fileConfig: OpenCodeMemConfig) {
@@ -582,14 +534,11 @@ function buildConfig(fileConfig: OpenCodeMemConfig) {
     storagePath: expandPath(fileConfig.storagePath ?? DEFAULTS.storagePath),
     userEmailOverride: fileConfig.userEmailOverride,
     userNameOverride: fileConfig.userNameOverride,
-    embeddingModel: fileConfig.embeddingModel ?? DEFAULTS.embeddingModel,
+    embeddingModel: fileConfig.embeddingModel,
     embeddingDimensions:
-      fileConfig.embeddingDimensions ??
-      getEmbeddingDimensions(fileConfig.embeddingModel ?? DEFAULTS.embeddingModel),
+      fileConfig.embeddingDimensions ?? getEmbeddingDimensions(fileConfig.embeddingModel ?? ""),
     embeddingApiUrl: fileConfig.embeddingApiUrl,
-    embeddingApiKey: fileConfig.embeddingApiUrl
-      ? resolveSecretValue(fileConfig.embeddingApiKey ?? process.env.OPENAI_API_KEY)
-      : undefined,
+    embeddingApiKey: resolveSecretValue(fileConfig.embeddingApiKey ?? process.env.OPENAI_API_KEY),
     similarityThreshold: fileConfig.similarityThreshold ?? DEFAULTS.similarityThreshold,
     maxMemories: fileConfig.maxMemories ?? DEFAULTS.maxMemories,
     maxProfileItems: fileConfig.maxProfileItems ?? DEFAULTS.maxProfileItems,
@@ -612,21 +561,10 @@ function buildConfig(fileConfig: OpenCodeMemConfig) {
     memoryExtraParams: fileConfig.memoryExtraParams,
     opencodeProvider: fileConfig.opencodeProvider,
     opencodeModel: fileConfig.opencodeModel,
-    vectorBackend: (fileConfig.vectorBackend ?? "usearch-first") as
-      | "usearch-first"
-      | "usearch"
-      | "exact-scan",
     aiSessionRetentionDays: fileConfig.aiSessionRetentionDays ?? DEFAULTS.aiSessionRetentionDays,
     webServerEnabled: fileConfig.webServerEnabled ?? DEFAULTS.webServerEnabled,
     webServerPort: fileConfig.webServerPort ?? DEFAULTS.webServerPort,
     webServerHost: fileConfig.webServerHost ?? DEFAULTS.webServerHost,
-    maxVectorsPerShard: fileConfig.maxVectorsPerShard ?? DEFAULTS.maxVectorsPerShard,
-    autoCleanupEnabled: fileConfig.autoCleanupEnabled ?? DEFAULTS.autoCleanupEnabled,
-    autoCleanupRetentionDays:
-      fileConfig.autoCleanupRetentionDays ?? DEFAULTS.autoCleanupRetentionDays,
-    deduplicationEnabled: fileConfig.deduplicationEnabled ?? DEFAULTS.deduplicationEnabled,
-    deduplicationSimilarityThreshold:
-      fileConfig.deduplicationSimilarityThreshold ?? DEFAULTS.deduplicationSimilarityThreshold,
     userProfileAnalysisInterval:
       fileConfig.userProfileAnalysisInterval ?? DEFAULTS.userProfileAnalysisInterval,
     userProfileMaxPreferences:
@@ -640,7 +578,6 @@ function buildConfig(fileConfig: OpenCodeMemConfig) {
     showAutoCaptureToasts: fileConfig.showAutoCaptureToasts ?? DEFAULTS.showAutoCaptureToasts,
     showUserProfileToasts: fileConfig.showUserProfileToasts ?? DEFAULTS.showUserProfileToasts,
     showErrorToasts: fileConfig.showErrorToasts ?? DEFAULTS.showErrorToasts,
-    storageBackend: (fileConfig.storageBackend ?? DEFAULTS.storageBackend) as "sqlite" | "postgres",
     postgres: {
       url: resolveSecretValue(fileConfig.postgres?.url),
       ssl: fileConfig.postgres?.ssl ?? DEFAULTS.postgres.ssl,
@@ -691,16 +628,35 @@ function buildConfig(fileConfig: OpenCodeMemConfig) {
 let _globalFileConfig = loadConfigFromPaths(CONFIG_FILES);
 export let CONFIG = buildConfig(_globalFileConfig);
 
-function validatePostgresConfig(): void {
-  if (CONFIG.storageBackend === "postgres" && !CONFIG.postgres.url) {
-    throw new Error(
-      "storageBackend is 'postgres' but no postgres.url is configured. " +
+function validateConfig(): string[] {
+  const errors: string[] = [];
+
+  if (!CONFIG.postgres.url) {
+    errors.push(
+      "postgres.url is required. " +
         "Set the 'postgres.url' field in config (supports env:// or file:// secret references)."
     );
   }
+
+  if (!CONFIG.embeddingApiUrl) {
+    errors.push(
+      "embeddingApiUrl is required. " +
+        "Set the 'embeddingApiUrl' field in config to your embedding API endpoint."
+    );
+  }
+
+  if (!CONFIG.embeddingModel) {
+    errors.push(
+      "embeddingModel is required. " +
+        "Set the 'embeddingModel' field in config to your embedding model name."
+    );
+  }
+
+  return errors;
 }
 
-validatePostgresConfig();
+// Track if we can operate — checked by isConfigured()
+let _configErrors: string[] = validateConfig();
 
 export function initConfig(directory: string): void {
   const projectPaths = [
@@ -711,9 +667,13 @@ export function initConfig(directory: string): void {
   const projectConfig = loadConfigFromPaths(projectPaths);
   const merged: OpenCodeMemConfig = { ...globalConfig, ...projectConfig };
   CONFIG = buildConfig(merged);
-  validatePostgresConfig();
+  _configErrors = validateConfig();
 }
 
 export function isConfigured(): boolean {
-  return true;
+  return _configErrors.length === 0;
+}
+
+export function getConfigErrors(): string[] {
+  return [..._configErrors];
 }

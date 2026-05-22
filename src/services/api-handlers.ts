@@ -654,27 +654,23 @@ export async function handleUnpinMemory(id: string): Promise<ApiResponse<void>> 
 export async function handleRunCleanup(): Promise<
   ApiResponse<{ deletedCount: number; userCount: number; projectCount: number }>
 > {
-  try {
-    const { cleanupService } = await import("./cleanup-service.js");
-    const result = await cleanupService.runCleanup();
-    return { success: true, data: result };
-  } catch (error) {
-    log("handleRunCleanup: error", { error: String(error) });
-    return { success: false, error: String(error) };
-  }
+  return {
+    success: false,
+    error:
+      "Cleanup service was removed along with the SQLite backend. " +
+      "Use Postgres-native retention policies instead.",
+  };
 }
 
 export async function handleRunDeduplication(): Promise<
   ApiResponse<{ exactDuplicatesDeleted: number; nearDuplicateGroups: any[] }>
 > {
-  try {
-    const { deduplicationService } = await import("./deduplication-service.js");
-    const result = await deduplicationService.detectAndRemoveDuplicates();
-    return { success: true, data: result };
-  } catch (error) {
-    log("handleRunDeduplication: error", { error: String(error) });
-    return { success: false, error: String(error) };
-  }
+  return {
+    success: false,
+    error:
+      "Deduplication service was removed along with the SQLite backend. " +
+      "Use Postgres-native deduplication or application-level logic instead.",
+  };
 }
 
 export async function handleDetectMigration(): Promise<
@@ -685,17 +681,13 @@ export async function handleDetectMigration(): Promise<
     shardMismatches: any[];
   }>
 > {
-  try {
-    const { migrationService } = await import("./migration-service.js");
-    const result = await migrationService.detectDimensionMismatch();
-    return { success: true, data: result };
-  } catch (error) {
-    log("handleDetectMigration: error", { error: String(error) });
-    return { success: false, error: String(error) };
-  }
+  return {
+    success: false,
+    error: "Migration service has been removed (SQLite backend no longer supported).",
+  };
 }
 
-export async function handleRunMigration(strategy: "fresh-start" | "re-embed"): Promise<
+export async function handleRunMigration(_strategy: "fresh-start" | "re-embed"): Promise<
   ApiResponse<{
     success: boolean;
     strategy: string;
@@ -705,14 +697,10 @@ export async function handleRunMigration(strategy: "fresh-start" | "re-embed"): 
     error?: string;
   }>
 > {
-  try {
-    const { migrationService } = await import("./migration-service.js");
-    const result = await migrationService.migrateToNewModel(strategy);
-    return { success: result.success, data: result };
-  } catch (error) {
-    log("handleRunMigration: error", { error: String(error) });
-    return { success: false, error: String(error) };
-  }
+  return {
+    success: false,
+    error: "Migration service has been removed (SQLite backend no longer supported).",
+  };
 }
 
 export async function handleDeletePrompt(

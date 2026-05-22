@@ -1,13 +1,7 @@
 /**
  * Storage repository interfaces and shared types for the storage abstraction layer.
- *
- * SQLite implementations wrap existing synchronous managers behind async signatures.
- * Postgres implementations (future) will be natively async.
  */
 
-// ── Backend selection ──
-
-export type StorageBackend = "sqlite" | "postgres";
 export type MemoryScopeKind = "user" | "project";
 
 // ── Search and query types ──
