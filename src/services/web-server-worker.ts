@@ -22,6 +22,11 @@ import {
   handleGetProfileChangelog,
   handleGetProfileSnapshot,
   handleRefreshProfile,
+  handleMigrationDetect,
+  handleCleanup,
+  handleDeduplicate,
+  handleMigrationRun,
+  handleListUserProfiles,
 } from "./api-handlers.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,7 +112,8 @@ async function handleRequest(req: Request): Promise<Response> {
       const page = parseInt(url.searchParams.get("page") || "1");
       const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
       const includePrompts = url.searchParams.get("includePrompts") !== "false";
-      const result = await handleListMemories(tag, page, pageSize, includePrompts);
+      const userEmail = url.searchParams.get("userEmail") || undefined;
+      const result = await handleListMemories(tag, page, pageSize, includePrompts, userEmail);
       return jsonResponse(result);
     }
 
@@ -151,12 +157,13 @@ async function handleRequest(req: Request): Promise<Response> {
       const tag = url.searchParams.get("tag") || undefined;
       const page = parseInt(url.searchParams.get("page") || "1");
       const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
+      const userEmail = url.searchParams.get("userEmail") || undefined;
 
       if (!query) {
         return jsonResponse({ success: false, error: "query parameter required" });
       }
 
-      const result = await handleSearch(query, tag, page, pageSize);
+      const result = await handleSearch(query, tag, page, pageSize, userEmail);
       return jsonResponse(result);
     }
 
@@ -247,6 +254,32 @@ async function handleRequest(req: Request): Promise<Response> {
       const body = (await parseBody(req).catch(() => ({}))) as any;
       const userId = body.userId || undefined;
       const result = await handleRefreshProfile(userId);
+      return jsonResponse(result);
+    }
+
+    if (path === "/api/migration/detect" && method === "GET") {
+      const result = handleMigrationDetect();
+      return jsonResponse(result);
+    }
+
+    if (path === "/api/cleanup" && method === "POST") {
+      const result = handleCleanup();
+      return jsonResponse(result);
+    }
+
+    if (path === "/api/deduplicate" && method === "POST") {
+      const result = handleDeduplicate();
+      return jsonResponse(result);
+    }
+
+    if (path === "/api/migration/run" && method === "POST") {
+      const body = await parseBody(req);
+      const result = handleMigrationRun(body);
+      return jsonResponse(result);
+    }
+
+    if (path === "/api/user-profiles" && method === "GET") {
+      const result = await handleListUserProfiles();
       return jsonResponse(result);
     }
 

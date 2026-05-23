@@ -40,29 +40,6 @@ body {
   margin: 0;
 }
 
-.github-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  border: 1px solid #333;
-  background: #0a0a0a;
-  color: #00ff00;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-
-.github-link:hover {
-  background: #00ff00;
-  color: #0a0a0a;
-  border-color: #00ff00;
-}
-
-.github-link .icon {
-  width: 20px;
-  height: 20px;
-}
-
 .stats-bar {
   display: flex;
   gap: 20px;
@@ -902,15 +879,6 @@ button:only-child .icon,
     font-size: 14px;
   }
 
-  .github-link {
-    padding: 6px;
-  }
-
-  .github-link .icon {
-    width: 18px;
-    height: 18px;
-  }
-
   .controls {
     flex-direction: column;
     align-items: stretch;
@@ -1613,19 +1581,166 @@ textarea:focus-visible {
   font-weight: bold;
 }
 
-.lang-toggle {
+/* ── Settings toggle button (header) ── */
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: 1px solid #333;
   background: #0a0a0a;
-  border: 1px solid #00ff00;
   color: #00ff00;
-  padding: 4px 12px;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
-  letter-spacing: 1px;
 }
-.lang-toggle:hover {
+
+.settings-toggle:hover {
   background: #00ff00;
   color: #0a0a0a;
+  border-color: #00ff00;
+}
+
+.settings-toggle .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* ── Settings panel (inline popover) ── */
+.settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  border: 1px solid #00ff00;
+  background: #111;
+  padding: 0;
+  min-width: 320px;
+  box-shadow:
+    0 4px 24px rgba(0, 255, 0, 0.1),
+    0 0 0 9999px rgba(0, 0, 0, 0.6);
+}
+
+.settings-panel.hidden {
+  display: none;
+}
+
+.settings-panel-content {
+  padding: 16px;
+}
+
+.settings-panel h3 {
+  color: #00ff00;
+  font-size: 13px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 8px;
+}
+
+.settings-field {
+  margin-bottom: 12px;
+}
+
+.settings-field label {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.settings-field input {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.settings-field input:focus {
+  border-color: #00ff00;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.settings-panel .btn-primary {
+  flex: 1;
+  padding: 8px 16px;
+  border: 1px solid #00ff00;
+  background: #00ff00;
+  color: #0a0a0a;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+
+.settings-panel .btn-primary:hover {
+  background: #00cc00;
+}
+
+.settings-panel .btn-cancel {
+  flex: 1;
+  padding: 8px 16px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+
+.settings-panel .btn-cancel:hover {
+  border-color: #ff4444;
+  color: #ff4444;
+}
+
+.settings-note {
+  margin-top: 10px;
+  font-size: 10px;
+  color: #666;
+  font-style: italic;
+}
+
+/* ── Settings profile dropdown ── */
+.settings-field select {
+  width: 100%;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.settings-field select:focus {
+  border-color: #00ff00;
+}
+
+.settings-field select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: #666;
+}
+
+.settings-field select option {
+  background: #111;
+  color: #e0e0e0;
 }

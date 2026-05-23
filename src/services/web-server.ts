@@ -23,6 +23,11 @@ import {
   handleGetProfileChangelog,
   handleGetProfileSnapshot,
   handleRefreshProfile,
+  handleMigrationDetect,
+  handleCleanup,
+  handleDeduplicate,
+  handleMigrationRun,
+  handleListUserProfiles,
 } from "./api-handlers.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -177,7 +182,8 @@ export class WebServer {
         const page = parseInt(url.searchParams.get("page") || "1") || 1;
         const pageSize = parseInt(url.searchParams.get("pageSize") || "20") || 20;
         const includePrompts = url.searchParams.get("includePrompts") !== "false";
-        const result = await handleListMemories(tag, page, pageSize, includePrompts);
+        const userEmail = url.searchParams.get("userEmail") || undefined;
+        const result = await handleListMemories(tag, page, pageSize, includePrompts, userEmail);
         return this.jsonResponse(result);
       }
 
@@ -221,12 +227,13 @@ export class WebServer {
         const tag = url.searchParams.get("tag") || undefined;
         const page = parseInt(url.searchParams.get("page") || "1") || 1;
         const pageSize = parseInt(url.searchParams.get("pageSize") || "20") || 20;
+        const userEmail = url.searchParams.get("userEmail") || undefined;
 
         if (!query) {
           return this.jsonResponse({ success: false, error: "query parameter required" });
         }
 
-        const result = await handleSearch(query, tag, page, pageSize);
+        const result = await handleSearch(query, tag, page, pageSize, userEmail);
         return this.jsonResponse(result);
       }
 
@@ -335,6 +342,32 @@ export class WebServer {
       if (path === "/api/user-profile/learn" && method === "POST") {
         const body = await this.parseBody(req);
         const result = await (await import("./api-handlers.js")).handleUserProfileLearn(body);
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/migration/detect" && method === "GET") {
+        const result = handleMigrationDetect();
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/cleanup" && method === "POST") {
+        const result = handleCleanup();
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/deduplicate" && method === "POST") {
+        const result = handleDeduplicate();
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/migration/run" && method === "POST") {
+        const body = await this.parseBody(req);
+        const result = handleMigrationRun(body);
+        return this.jsonResponse(result);
+      }
+
+      if (path === "/api/user-profiles" && method === "GET") {
+        const result = await handleListUserProfiles();
         return this.jsonResponse(result);
       }
 

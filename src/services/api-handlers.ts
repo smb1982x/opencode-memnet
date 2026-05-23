@@ -112,6 +112,17 @@ async function getProjectPathFromTag(tag: string): Promise<string | undefined> {
   return match?.projectPath;
 }
 
+function metadataScore(t: TagInfo): number {
+  return (
+    (t.displayName ? 1 : 0) +
+    (t.userName ? 1 : 0) +
+    (t.userEmail ? 1 : 0) +
+    (t.projectPath ? 1 : 0) +
+    (t.projectName ? 1 : 0) +
+    (t.gitRepoUrl ? 1 : 0)
+  );
+}
+
 export async function handleListTags(): Promise<ApiResponse<{ project: TagInfo[] }>> {
   try {
     await ensureInit();
@@ -131,7 +142,17 @@ export async function handleListTags(): Promise<ApiResponse<{ project: TagInfo[]
         projectName: t.projectName,
         gitRepoUrl: t.gitRepoUrl,
       }));
-    return { success: true, data: { project: projectTags } };
+    // Deduplicate by tag: DISTINCT in Postgres treats NULL as a unique value,
+    // so rows with different user metadata can produce duplicate tag entries.
+    // Pick the entry with the most non-null metadata fields.
+    const deduped = new Map<string, TagInfo>();
+    for (const t of projectTags) {
+      const existing = deduped.get(t.tag);
+      if (!existing || metadataScore(t) > metadataScore(existing)) {
+        deduped.set(t.tag, t);
+      }
+    }
+    return { success: true, data: { project: Array.from(deduped.values()) } };
   } catch (error) {
     log("handleListTags: error", { error: String(error) });
     return { success: false, error: String(error) };
@@ -142,7 +163,8 @@ export async function handleListMemories(
   tag?: string,
   page: number = 1,
   pageSize: number = 20,
-  includePrompts: boolean = true
+  includePrompts: boolean = true,
+  userEmail?: string
 ): Promise<ApiResponse<PaginatedResponse<Memory | any>>> {
   try {
     await ensureInit();
@@ -156,6 +178,7 @@ export async function handleListMemories(
         scopeHash: hash,
         containerTag: tag,
         limit: 10000,
+        userEmail,
       });
     } else {
       // #10: Cap at 1000 rows when no tag filter to prevent unbounded load / OOM.
@@ -165,6 +188,7 @@ export async function handleListMemories(
         containerTag: "",
         includeAllContainers: true,
         limit: 1000,
+        userEmail,
       });
       memoryRows = memoryRows.filter((m) => m.containerTag.includes("_project_"));
     }
@@ -500,7 +524,8 @@ export async function handleSearch(
   query: string,
   tag?: string,
   page: number = 1,
-  pageSize: number = 20
+  pageSize: number = 20,
+  userEmail?: string
 ): Promise<ApiResponse<PaginatedResponse<SearchResultItem>>> {
   try {
     await ensureInit();
@@ -520,6 +545,7 @@ export async function handleSearch(
         limit: pageSize * 4,
         similarityThreshold: 0,
         queryText: query,
+        userEmail,
       });
       memoryResults.push(...results);
 
@@ -536,6 +562,7 @@ export async function handleSearch(
         limit: pageSize * 10,
         similarityThreshold: 0,
         queryText: query,
+        userEmail,
       });
       memoryResults.push(...results);
       promptResults = await promptRepo.searchPrompts(query, undefined, pageSize * 2);
@@ -1387,6 +1414,57 @@ export async function handleUserProfileLearn(data: {
     return { success: true, data: { updated: true } };
   } catch (error) {
     log("handleUserProfileLearn: error", { error: String(error) });
+    return { success: false, error: String(error) };
+  }
+}
+
+// ── Stub endpoints for planned features ─────────────────
+
+export function handleMigrationDetect(): ApiResponse<{ needsMigration: boolean }> {
+  return { success: true, data: { needsMigration: false } };
+}
+
+export function handleCleanup(): ApiResponse {
+  return { success: false, error: "Cleanup not yet implemented" };
+}
+
+export function handleDeduplicate(): ApiResponse {
+  return { success: false, error: "Deduplication not yet implemented" };
+}
+
+export function handleMigrationRun(_body: {
+  strategy: string;
+}): ApiResponse<{ deletedShards?: number; reEmbeddedMemories?: number; duration: number }> {
+  return { success: false, error: "Migration run not yet implemented" };
+}
+
+// ── List all user profiles ───────────────────────────────
+
+export async function handleListUserProfiles(): Promise<
+  ApiResponse<{
+    profiles: Array<{ userId: string; displayName: string; userEmail: string }>;
+    defaultUserId: string;
+  }>
+> {
+  try {
+    await ensureInit();
+    const { getTags } = await import("./tags.js");
+    const tags = await getTags(process.cwd());
+    const defaultUserId = tags.user.userEmail || "unknown";
+
+    const profiles = await profileRepo.getAllActiveProfiles();
+    const list = profiles.map((p) => ({
+      userId: p.userId,
+      displayName: p.displayName || p.userId,
+      userEmail: p.userEmail || p.userId,
+    }));
+
+    return {
+      success: true,
+      data: { profiles: list, defaultUserId },
+    };
+  } catch (error) {
+    log("handleListUserProfiles: error", { error: String(error) });
     return { success: false, error: String(error) };
   }
 }

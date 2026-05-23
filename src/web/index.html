@@ -25,17 +25,10 @@
     <div class="container">
       <header class="header">
         <div class="header-top">
-          <h1 class="title" data-i18n="title">┌─ OPENCODE MEMORY EXPLORER ─┐</h1>
-          <button id="lang-toggle" class="lang-toggle" title="Switch Language">EN</button>
-          <a
-            href="https://github.com/tickernelz/opencode-mem"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="github-link"
-            title="View on GitHub"
-          >
-            <i data-lucide="github" class="icon"></i>
-          </a>
+          <h1 class="title" data-i18n="title">░▒▓▌ OPENCODE MEMORY EXPLORER ▐▓▒░</h1>
+          <button id="settings-toggle" class="settings-toggle" title="Settings">
+            <i data-lucide="settings" class="icon"></i>
+          </button>
         </div>
         <div class="stats-bar">
           <span id="stats-total">Total: 0</span>
@@ -288,6 +281,34 @@
         <div id="changelog-list" class="changelog-list">
           <div class="loading" data-i18n="loading-changelog">Loading changelog...</div>
         </div>
+      </div>
+    </div>
+
+    <div id="settings-panel" class="settings-panel hidden">
+      <div class="settings-panel-content">
+        <h3 data-i18n="settings-title">API Settings</h3>
+        <div class="settings-field">
+          <label for="settings-apikey" data-i18n="settings-apikey-label">API Key</label>
+          <input
+            type="password"
+            id="settings-apikey"
+            data-i18n-placeholder="settings-apikey-placeholder"
+            placeholder="Enter server API key..."
+          />
+        </div>
+        <div class="settings-field">
+          <label for="settings-profile" data-i18n="settings-profile-label">Profile</label>
+          <select id="settings-profile" disabled>
+            <option value="" data-i18n="settings-profile-loading">Enter API key first...</option>
+          </select>
+        </div>
+        <div class="settings-actions">
+          <button id="settings-save" class="btn-primary" data-i18n="settings-save">Save</button>
+          <button id="settings-close" class="btn-cancel" data-i18n="btn-cancel">Cancel</button>
+        </div>
+        <p class="settings-note" data-i18n="settings-note">
+          API key is stored in browser localStorage.
+        </p>
       </div>
     </div>
 

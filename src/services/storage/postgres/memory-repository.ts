@@ -199,6 +199,7 @@ async function executeSearchQuery(
 ): Promise<any[]> {
   const scopeHashFilter = options.scopeHash || "";
   const containerTagFilter = options.includeAllContainers ? "" : options.containerTag;
+  const userEmail = options.userEmail ?? "";
 
   return sql.unsafe(
     `
@@ -209,6 +210,7 @@ async function executeSearchQuery(
         WHERE scope = $2
           AND ($3::text = '' OR scope_hash = $3)
           AND ($4::text = '' OR container_tag = $4)
+          AND ($6::text = '' OR user_email = $6)
         ORDER BY vector <=> $1::${vectorCast}
         LIMIT $5
       )
@@ -219,6 +221,7 @@ async function executeSearchQuery(
         WHERE scope = $2
           AND ($3::text = '' OR scope_hash = $3)
           AND ($4::text = '' OR container_tag = $4)
+          AND ($6::text = '' OR user_email = $6)
           AND tags_vector IS NOT NULL
         ORDER BY tags_vector <=> $1::${vectorCast}
         LIMIT $5
@@ -234,7 +237,7 @@ async function executeSearchQuery(
     FROM memories m
     JOIN candidates c ON c.id = m.id
     `,
-    [queryLiteral, options.scope, scopeHashFilter, containerTagFilter, candidateLimit]
+    [queryLiteral, options.scope, scopeHashFilter, containerTagFilter, candidateLimit, userEmail]
   );
 }
 
@@ -399,16 +402,19 @@ export class PostgresMemoryRepository implements MemoryRepository {
     containerTag: string;
     includeAllContainers?: boolean;
     limit: number;
+    userEmail?: string;
   }): Promise<MemoryRow[]> {
     const sql = getPostgresClient();
     const scopeHashFilter = args.scopeHash || "";
     const containerTagFilter = args.includeAllContainers ? "" : args.containerTag;
+    const userEmailFilter = args.userEmail ?? "";
 
     const rows = await sql`
       SELECT * FROM memories
       WHERE scope = ${args.scope}
         AND (${scopeHashFilter}::text = '' OR scope_hash = ${scopeHashFilter})
         AND (${containerTagFilter}::text = '' OR container_tag = ${containerTagFilter})
+        AND (${userEmailFilter}::text = '' OR user_email = ${userEmailFilter})
       ORDER BY created_at DESC
       LIMIT ${args.limit}
     `;

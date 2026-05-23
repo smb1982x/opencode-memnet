@@ -14,6 +14,8 @@ const state = {
   selectedMemories: new Set(),
   autoRefreshInterval: null,
   userProfile: null,
+  authKey: localStorage.getItem("opencode-mem-apikey") || "",
+  activeProfileId: localStorage.getItem("opencode-mem-active-profile") || "",
 };
 
 marked.setOptions({
@@ -32,8 +34,13 @@ async function fetchAPI(endpoint, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60000);
   try {
+    const headers = { ...(options.headers || {}) };
+    if (state.authKey) {
+      headers["Authorization"] = `Bearer ${state.authKey}`;
+    }
     const response = await fetch(API_BASE + endpoint, {
       ...options,
+      headers,
       signal: controller.signal,
     });
     const data = await response.json();
@@ -399,7 +406,13 @@ async function addMemory(e) {
   const result = await fetchAPI("/api/memories", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, containerTag, type: type || undefined, tags }),
+    body: JSON.stringify({
+      content,
+      containerTag,
+      type: type || undefined,
+      tags,
+      userEmail: state.activeProfileId || undefined,
+    }),
   });
 
   if (result.success) {
@@ -429,6 +442,10 @@ async function loadMemories() {
     if (state.selectedTag) {
       endpoint += `&tag=${encodeURIComponent(state.selectedTag)}`;
     }
+  }
+
+  if (state.activeProfileId) {
+    endpoint += `&userEmail=${encodeURIComponent(state.activeProfileId)}`;
   }
 
   const result = await fetchAPI(endpoint);
@@ -892,7 +909,10 @@ async function runMigration(strategy) {
 }
 
 async function loadUserProfile() {
-  const result = await fetchAPI("/api/user-profile");
+  const endpoint = state.activeProfileId
+    ? `/api/user-profile?userId=${encodeURIComponent(state.activeProfileId)}`
+    : "/api/user-profile";
+  const result = await fetchAPI(endpoint);
   if (result.success) {
     state.userProfile = result.data;
     renderUserProfile();
@@ -1155,6 +1175,15 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function escapeAttr(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("tab-project").addEventListener("click", () => switchView("project"));
   document.getElementById("tab-profile").addEventListener("click", () => switchView("profile"));
@@ -1163,17 +1192,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("changelog-modal").classList.add("hidden");
   });
 
-  document.getElementById("lang-toggle").addEventListener("click", () => {
-    const newLang = getLanguage() === "en" ? "zh" : "en";
-    setLanguage(newLang);
-    document.getElementById("lang-toggle").textContent = newLang.toUpperCase();
-    // Re-render dynamic content
-    loadMemories();
-    loadStats();
-    if (state.currentView === "profile") loadUserProfile();
-  });
-
-  document.getElementById("lang-toggle").textContent = getLanguage().toUpperCase();
+  // Language is auto-detected from localStorage or browser; no manual toggle button.
 
   document.getElementById("tag-filter").addEventListener("change", () => {
     state.selectedTag = document.getElementById("tag-filter").value;
@@ -1222,10 +1241,119 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.target.id === "edit-modal") closeModal();
   });
 
+  // ── Settings panel ──
+
+  async function populateProfileDropdown() {
+    if (!state.authKey) return;
+    try {
+      const headers = { Authorization: `Bearer ${state.authKey}` };
+      const res = await fetch("/api/user-profiles", { headers });
+      const data = await res.json();
+
+      if (data.success && data.data.profiles.length > 0) {
+        const select = document.getElementById("settings-profile");
+        select.innerHTML = "";
+        data.data.profiles.forEach((p) => {
+          const opt = document.createElement("option");
+          opt.value = p.userId;
+          opt.textContent = p.displayName + " (" + p.userEmail + ")";
+          select.appendChild(opt);
+        });
+        select.disabled = false;
+
+        const defaultId = data.data.defaultUserId;
+        select._populating = true;
+        const targetId = state.activeProfileId || defaultId;
+        if (data.data.profiles.some((p) => p.userId === targetId)) {
+          select.value = targetId;
+        } else if (data.data.profiles.some((p) => p.userId === defaultId)) {
+          select.value = defaultId;
+        } else if (data.data.profiles.length > 0) {
+          select.value = data.data.profiles[0].userId;
+        }
+        if (!state.activeProfileId && data.data.profiles.length > 0) {
+          state.activeProfileId = data.data.profiles[0].userId;
+        }
+        select._populating = false;
+      }
+    } catch (e) {
+      console.warn("Failed to load profiles:", e);
+    }
+  }
+
+  document.getElementById("settings-toggle").addEventListener("click", () => {
+    const panel = document.getElementById("settings-panel");
+    panel.classList.toggle("hidden");
+    if (!panel.classList.contains("hidden")) {
+      document.getElementById("settings-apikey").value = state.authKey;
+      document.getElementById("settings-apikey").focus();
+      if (state.authKey) populateProfileDropdown();
+      if (state.activeProfileId && state.memories.length === 0) {
+        loadMemories();
+        loadStats();
+      }
+    }
+  });
+  document.getElementById("settings-close").addEventListener("click", () => {
+    document.getElementById("settings-panel").classList.add("hidden");
+  });
+  document.getElementById("settings-profile").addEventListener("change", () => {
+    if (document.getElementById("settings-profile")._populating) return;
+    const newProfileId = document.getElementById("settings-profile").value;
+    if (state.activeProfileId === newProfileId) return;
+    state.activeProfileId = newProfileId;
+    localStorage.setItem("opencode-mem-active-profile", newProfileId);
+    state.currentPage = 1;
+
+    // Clear current data and reload for the new profile
+    state.memories = [];
+    state.tags = { project: [] };
+    document.getElementById("memories-list").innerHTML =
+      '<div class="loading">Switching profile...</div>';
+    document.getElementById("stats-total").textContent = "Total: 0";
+    document.getElementById("section-title").textContent = "└─ PROJECT MEMORIES (0) ──";
+
+    loadMemories();
+    loadStats();
+    if (state.currentView === "profile") loadUserProfile();
+  });
+  document.getElementById("settings-save").addEventListener("click", async () => {
+    const key = document.getElementById("settings-apikey").value.trim();
+    state.authKey = key;
+    localStorage.setItem("opencode-mem-apikey", key);
+
+    // Try to load profiles and set the default
+    await populateProfileDropdown();
+
+    document.getElementById("settings-panel").classList.add("hidden");
+    loadTags();
+    loadMemories();
+    loadStats();
+  });
+  document.getElementById("settings-apikey").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") document.getElementById("settings-save").click();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.getElementById("settings-panel").classList.add("hidden");
+    }
+  });
+
   await loadTags();
   await loadMemories();
   await loadStats();
   await checkMigrationStatus();
+
+  // Fallback: if memories still show the loading indicator after init,
+  // retry after a short delay (headless Chromium event loop edge case)
+  setTimeout(() => {
+    const list = document.getElementById("memories-list");
+    if (list && list.querySelector(".loading")) {
+      console.warn("[opencode-mem] Memories stuck in loading state, retrying...");
+      loadMemories();
+      loadStats();
+    }
+  }, 3000);
 
   startAutoRefresh();
 

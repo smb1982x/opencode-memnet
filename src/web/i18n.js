@@ -1,6 +1,6 @@
 const translations = {
   en: {
-    title: "┌─ OPENCODE MEMORY EXPLORER ─┐",
+    title: " ░▒▓▌ OPENCODE MEMORY EXPLORER ▐▓▒░ ",
     "tab-project": "PROJECT MEMORIES",
     "tab-profile": "USER PROFILE",
     "label-tag": "Tag:",
@@ -105,9 +105,16 @@ const translations = {
     "migration-dimension-mismatch": "dimension mismatch detected",
     "migration-mismatch-details":
       "Model mismatch: Config uses {configDimensions}D ({configModel}), but {shardInfo}.",
+    "settings-title": "API SETTINGS",
+    "settings-apikey-label": "API Key:",
+    "settings-apikey-placeholder": "Enter server API key...",
+    "settings-save": "Save",
+    "settings-note": "API key is stored in browser localStorage.",
+    "settings-profile-label": "Profile:",
+    "settings-profile-loading": "Enter API key first...",
   },
   zh: {
-    title: "┌─ OPENCODE MEMORY EXPLORER ─┐",
+    title: " ░▒▓▌ OPENCODE MEMORY EXPLORER ▐▓▒░ ",
     "tab-project": "项目记忆",
     "tab-profile": "用户画像",
     "label-tag": "标签:",
@@ -210,6 +217,13 @@ const translations = {
     "migration-dimension-mismatch": "检测到维度不匹配",
     "migration-mismatch-details":
       "模型不匹配：配置使用 {configDimensions}D ({configModel})，但{shardInfo}。",
+    "settings-title": "API 设置",
+    "settings-apikey-label": "API 密钥:",
+    "settings-apikey-placeholder": "输入服务器 API 密钥...",
+    "settings-save": "保存",
+    "settings-note": "API 密钥存储在浏览器 localStorage 中。",
+    "settings-profile-label": "用户:",
+    "settings-profile-loading": "请先输入 API 密钥...",
   },
 };
 

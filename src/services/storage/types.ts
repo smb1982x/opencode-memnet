@@ -15,6 +15,7 @@ export interface MemorySearchOptions {
   includeAllContainers?: boolean;
   limit: number;
   similarityThreshold: number;
+  userEmail?: string;
 }
 
 // ── Row / result types ──
@@ -103,6 +104,7 @@ export interface MemoryRepository {
     containerTag: string;
     includeAllContainers?: boolean;
     limit: number;
+    userEmail?: string;
   }): Promise<MemoryRow[]>;
 
   getBySessionId(args: {
