@@ -197,7 +197,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/migration/tags/reset" && method === "POST") {
-      const result = handleResetTagMigration();
+      const result = await handleResetTagMigration();
       return jsonResponse(result);
     }
 

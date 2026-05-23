@@ -267,7 +267,7 @@ export class WebServer {
       }
 
       if (path === "/api/migration/tags/reset" && method === "POST") {
-        const result = handleResetTagMigration();
+        const result = await handleResetTagMigration();
         return this.jsonResponse(result);
       }
 

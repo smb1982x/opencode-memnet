@@ -888,6 +888,31 @@ export async function handleDetectTagMigration(): Promise<
 > {
   try {
     await ensureInit();
+
+    // Restore migration completion state from persisted marker
+    if (migrationProgress.total === 0) {
+      try {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const dataDir = CONFIG.storagePath || "/tmp/opencode-memnet-data";
+        const marker = JSON.parse(
+          await fs.readFile(path.join(dataDir, ".migration", "tag-migration.json"), "utf-8")
+        );
+        if (marker.completed) {
+          migrationProgress = {
+            processed: marker.processed ?? 0,
+            total: marker.processed ?? 0,
+            currentBatch: 0,
+            totalBatches: 0,
+            isComplete: true,
+            errors: [],
+          };
+        }
+      } catch {
+        /* file doesn't exist yet — first run or fresh state */
+      }
+    }
+
     const untaggedCount = await memoryRepo.countUntagged();
     if (untaggedCount === 0) {
       // Auto-reset stale migration state when no untagged memories remain
@@ -902,6 +927,12 @@ export async function handleDetectTagMigration(): Promise<
       _migrationRunning = false;
       cachedMigrationRecords = null;
     }
+    // Suppress nag when migration already ran and completed — AI failures
+    // on remaining untagged memories won't be fixed by re-running.
+    if (migrationProgress.isComplete && migrationProgress.total > 0) {
+      return { success: true, data: { needsMigration: false, count: untaggedCount } };
+    }
+
     return { success: true, data: { needsMigration: untaggedCount > 0, count: untaggedCount } };
   } catch (error) {
     return { success: false, error: String(error) };
@@ -1056,6 +1087,23 @@ export async function handleRunTagMigrationBatch(
     if (!hasMore) {
       migrationProgress.isComplete = true;
       cachedMigrationRecords = null;
+      // Persist completion marker to survive server restarts
+      try {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const dataDir = CONFIG.storagePath || "/tmp/opencode-memnet-data";
+        await fs.mkdir(path.join(dataDir, ".migration"), { recursive: true });
+        await fs.writeFile(
+          path.join(dataDir, ".migration", "tag-migration.json"),
+          JSON.stringify({
+            completed: true,
+            processed: migrationProgress.processed,
+            timestamp: Date.now(),
+          })
+        );
+      } catch {
+        /* best-effort; suppress nag in Fix 1 is primary fix */
+      }
     }
 
     return {
@@ -1556,7 +1604,7 @@ export async function handleListUserProfiles(): Promise<
   }
 }
 
-export function handleResetTagMigration(): ApiResponse {
+export async function handleResetTagMigration(): Promise<ApiResponse> {
   migrationProgress = {
     processed: 0,
     total: 0,
@@ -1567,5 +1615,14 @@ export function handleResetTagMigration(): ApiResponse {
   };
   _migrationRunning = false;
   cachedMigrationRecords = null;
+  // Also delete the persisted marker file
+  try {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const dataDir = CONFIG.storagePath || "/tmp/opencode-memnet-data";
+    await fs.unlink(path.join(dataDir, ".migration", "tag-migration.json"));
+  } catch {
+    /* file may not exist */
+  }
   return { success: true };
 }

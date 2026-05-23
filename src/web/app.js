@@ -836,6 +836,7 @@ async function runTagMigration() {
 
   progress.style.width = "100%";
   status.textContent = t("toast-migration-success");
+  dismissTagMigration();
   showToast(t("toast-migration-success"), "success");
   setTimeout(() => {
     document.getElementById("tag-migration-overlay").classList.add("hidden");
