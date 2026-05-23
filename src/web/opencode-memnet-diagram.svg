@@ -69,6 +69,6 @@
   <line x1="695" y1="50" x2="600" y2="80" stroke="#555" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
 
   <!-- Context arc -->
-  <path d="M 470 350 Q 470 365 130 270" fill="none" stroke="#00ff00" stroke-width="1" stroke-dasharray="4,4" opacity="0.5" marker-start="url(#arrowGreen)"/>
+  <path d="M 470 350 Q 470 365 130 270" fill="none" stroke="#00ff00" stroke-width="1" stroke-dasharray="4,4" opacity="0.5" marker-end="url(#arrowGreen)"/>
   <text x="300" y="340" fill="#00ff00" font-size="9" text-anchor="middle" opacity="0.6">Context Injection</text>
 </svg>
