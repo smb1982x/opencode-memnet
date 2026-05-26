@@ -1,0 +1,14 @@
+plugin/
+shared/
+scripts/
+tests/
+*.md
+.git/
+.husky/
+node_modules/
+dist/
+.env*
+.gitignore
+SPEC-*.md
+DESIGN-*.md
+PLAN-*.md
