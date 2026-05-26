@@ -1,6 +1,6 @@
 # opencode-memnet
 
-Persistent memory system for AI coding agents — Postgres + pgvector backend with a standalone server and thin client plugin. This is a fork of the original [opencode-mem](https://github.com/tickernelz/opencode-mem) — to visit the original, [click here](https://github.com/tickernelz/opencode-mem).
+Persistent memory system for AI coding agents — server + client architecture.
 
 This project builds upon and would not exist without the original [OpenCode Memory](https://github.com/tickernelz/opencode-mem) by **tickernelz**. Thank you for creating and sharing this excellent work. For the original version with local vector database support and a lighter footprint suitable for single-user local use, visit **[github.com/tickernelz/opencode-mem](https://github.com/tickernelz/opencode-mem)**.
 
@@ -8,20 +8,49 @@ This project builds upon and would not exist without the original [OpenCode Memo
 
 ![opencode-memnet Architecture Diagram](src/web/opencode-memnet-diagram.svg)
 
-- **Server**: Standalone Bun process serving REST API + WebUI, connected to Postgres/pgvector
-- **Client**: Thin OpenCode plugin that communicates with the server over HTTP
+- **Server** (`src/`): Standalone Bun process serving REST API + WebUI, connected to Postgres/pgvector
+- **Client Plugin** (`plugin/`): Thin OpenCode plugin compiled to a single JS file, communicates via HTTP
+- **Shared** (`shared/`): Utilities used by the plugin (client config, tags, logging)
 - **Storage**: Postgres with pgvector extension for 1024-dim vector embeddings with HNSW indexing
 - **Embeddings**: Remote OpenAI-compatible API (configurable model and dimensions)
 - **AI**: OpenAI Chat Completions API for memory extraction and profile learning
 
-## Prerequisites
-
-- **Bun** ≥ 1.x (runtime)
-- **PostgreSQL** 16+ with **pgvector** extension
-- **Embedding API**: Any OpenAI-compatible endpoint (e.g., text-embedding-3-small, voyage-3, or self-hosted)
-- **Chat API**: OpenAI-compatible Chat Completions endpoint
+The server and client plugin are fully independent — the server knows nothing about the plugin, and the plugin has no server-side dependencies. You can run the server standalone, or use the plugin with any compatible memory server.
 
 ## Quick Start
+
+### 1. Install the Server (Docker)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-server.sh \
+  | EMBEDDING_API_URL=https://api.openai.com/v1 \
+    EMBEDDING_MODEL=text-embedding-3-small \
+    EMBEDDING_API_KEY=sk-... \
+    SERVER_API_KEY=my-secret \
+    bash
+```
+
+### 2. Configure the Client Plugin
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-client.sh \
+  | OPENCODE_MEM_SERVER_URL=http://localhost:4747 \
+    OPENCODE_MEM_API_KEY=my-secret \
+    bash
+```
+
+Done. Start OpenCode and the plugin will connect automatically.
+
+---
+
+## Server Installation
+
+### Prerequisites
+
+- **Docker** (recommended) or **Bun** >= 1.x
+- **PostgreSQL** 16+ with **pgvector** extension (included in Docker setup)
+- **Embedding API**: Any OpenAI-compatible endpoint (e.g., text-embedding-3-small, voyage-3, or self-hosted)
+- **Chat API**: OpenAI-compatible Chat Completions endpoint (optional, for auto-capture)
 
 ### Docker Compose (recommended)
 
@@ -71,23 +100,9 @@ MEMORY_API_KEY="sk-..." \
 bun run src/server.ts
 ```
 
-### Plugin Configuration
+### Environment Variables
 
-In your OpenCode project, create `.opencode/opencode-memnet.jsonc`:
-
-```jsonc
-{
-  "serverUrl": "http://localhost:4747",
-  "apiKey": "my-secret-key",
-  "autoCaptureEnabled": true,
-}
-```
-
-The plugin auto-detects this config and switches to remote mode. Without it, the legacy in-process mode runs with a deprecation warning.
-
-## Environment Variables
-
-### Required
+#### Required
 
 | Variable            | Description                                           |
 | ------------------- | ----------------------------------------------------- |
@@ -97,7 +112,7 @@ The plugin auto-detects this config and switches to remote mode. Without it, the
 | `EMBEDDING_MODEL`   | Embedding model name (e.g., `text-embedding-3-small`) |
 | `EMBEDDING_API_KEY` | API key for the embedding service                     |
 
-### Optional
+#### Optional
 
 | Variable                             | Default       | Description                             |
 | ------------------------------------ | ------------- | --------------------------------------- |
@@ -123,6 +138,61 @@ The plugin auto-detects this config and switches to remote mode. Without it, the
 | `USER_PROFILE_MAX_WORKFLOWS`         | `10`          | Max identified workflows                |
 | `USER_PROFILE_CONFIDENCE_DECAY_DAYS` | `30`          | Confidence decay period                 |
 | `WEB_SERVER_ALLOWED_ORIGIN`          | `*`           | CORS allowed origin                     |
+
+---
+
+## Client Plugin Installation
+
+### Automatic (curl)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-client.sh \
+  | OPENCODE_MEM_SERVER_URL=http://localhost:4747 \
+    OPENCODE_MEM_API_KEY=my-secret \
+    bash
+```
+
+This writes a config file to `~/.config/opencode/opencode-memnet.json`. The plugin will activate on next OpenCode session.
+
+### Manual Configuration
+
+Create `.opencode/opencode-memnet.jsonc` in your project root:
+
+```jsonc
+{
+  "serverUrl": "http://localhost:4747",
+  "apiKey": "my-secret-key",
+  "autoCaptureEnabled": true,
+}
+```
+
+Or configure globally at `~/.config/opencode/opencode-memnet.jsonc`. Project config overrides global config.
+
+### Plugin Configuration Options
+
+| Field                               | Default                 | Description                                    |
+| ----------------------------------- | ----------------------- | ---------------------------------------------- |
+| `serverUrl`                         | `http://localhost:4747` | Server URL                                     |
+| `apiKey`                            | —                       | API key (required)                             |
+| `autoCaptureEnabled`                | `true`                  | Enable auto-capture from chat sessions         |
+| `showAutoCaptureToasts`             | `true`                  | Show toast on auto-capture                     |
+| `showErrorToasts`                   | `true`                  | Show error toasts                              |
+| `chatMessage.enabled`               | `true`                  | Inject memory context on chat messages         |
+| `chatMessage.maxMemories`           | `3`                     | Max memories in context injection              |
+| `chatMessage.excludeCurrentSession` | `true`                  | Exclude current session from context           |
+| `chatMessage.maxAgeDays`            | —                       | Max age in days for context memories           |
+| `chatMessage.injectOn`              | `"first"`               | When to inject: `"first"` or `"always"`        |
+| `memory.defaultScope`               | `"project"`             | Default scope: `"project"` or `"all-projects"` |
+
+### Plugin Features
+
+- **chat.message hook**: Injects relevant `[MEMORY]` context before each chat message
+- **tool.memory**: Adds, searches, lists, and deletes memories via the memory tool
+- **session.idle**: Fire-and-forget auto-capture to the server
+- **session.compacted**: Restores session memory after context compaction
+- **User profile**: View learned preferences and patterns
+
+---
 
 ## API Endpoints
 
@@ -172,6 +242,8 @@ All `/api/*` routes require `Authorization: Bearer <SERVER_API_KEY>`. Health end
 | `GET`  | `/api/tags`  | List distinct project tags                   |
 | `GET`  | `/api/stats` | Memory statistics (total, by scope, by type) |
 
+---
+
 ## WebUI
 
 A management interface served at `/` with:
@@ -186,15 +258,7 @@ A management interface served at `/` with:
 - **i18n**: English and Chinese language support
 - **Migration tools**: Tag migration and dimension migration workflows
 
-## Client Plugin
-
-When configured with `serverUrl` and `apiKey`, the plugin runs as a thin client:
-
-- **chat.message hook**: Injects relevant `[MEMORY]` context before each chat message
-- **tool.memory**: Adds, searches, lists, and deletes memories via the memory tool
-- **session.idle**: Fire-and-forget auto-capture to the server
-- **session.compacted**: Restores session memory after context compaction
-- **User profile**: View learned preferences and patterns
+---
 
 ## User Profiles
 
@@ -207,15 +271,80 @@ Profiles are learned automatically from chat sessions:
 
 User identity is auto-detected from `git config user.email` in the project directory. Profiles are keyed by email — switching git identities switches profiles automatically.
 
+---
+
 ## Development
+
+### Prerequisites
+
+- **Bun** >= 1.x
+
+### Setup
 
 ```bash
 bun install
-bun run typecheck    # tsc --noEmit
-bun run build        # tsc + copy web assets
-bun run dev:server   # bun --watch src/server.ts
-bun test             # 160 tests
+cd plugin && bun install && cd ..
 ```
+
+### Build
+
+```bash
+bun run build:all        # Build server + plugin
+bun run build            # Build server only
+bun run build:plugin     # Build plugin only
+```
+
+### Develop
+
+```bash
+bun run dev:server       # Server with hot reload
+bun run typecheck:all    # Type-check everything
+bun run typecheck        # Type-check server only
+bun run typecheck:plugin # Type-check plugin only
+```
+
+### Test
+
+```bash
+bun test
+```
+
+### Directory Layout
+
+```
+opencode-memnet/
+├── shared/          # Shared utilities (used by plugin only)
+├── plugin/          # Client plugin — compiles independently
+│   ├── src/         # Plugin source
+│   └── dist/        # Bundled output (single .js file)
+├── src/             # Server source
+│   ├── services/    # Server services (storage, AI, etc.)
+│   └── web/         # WebUI static files
+├── scripts/         # Install scripts
+├── Dockerfile       # Server Docker build
+└── docker-compose.yml
+```
+
+### Plugin Bundle
+
+The client plugin compiles to a single JS file (`plugin/dist/opencode-memnet.js`) that can be loaded directly by OpenCode without any server-side dependencies.
+
+---
+
+## Docker Deployment
+
+```bash
+# Using docker-compose (see Server Installation above)
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+---
 
 ## License
 
