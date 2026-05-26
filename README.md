@@ -54,21 +54,55 @@ Done. Start OpenCode and the plugin will connect automatically.
 
 ### Docker Compose (recommended)
 
+1. **Clone the repository:**
+
 ```bash
 git clone https://github.com/tickernelz/opencode-mem
 cd opencode-memnet
+```
 
-# Set your API endpoints
-export EMBEDDING_API_URL="https://api.openai.com/v1"
-export EMBEDDING_MODEL="text-embedding-3-small"
-export EMBEDDING_API_KEY="sk-..."
-export SERVER_API_KEY="your-secret-key"
-export MEMORY_MODEL="gpt-4o-mini"
-export MEMORY_API_URL="https://api.openai.com/v1"
-export MEMORY_API_KEY="sk-..."
+2. **Create your `.env` file from the example:**
 
+```bash
+cp .env.example .env
+```
+
+3. **Edit `.env` and fill in the required values** (at minimum, these must be set):
+
+```bash
+# Required — the server will not start without these
+SERVER_API_KEY=your-secret-key
+EMBEDDING_API_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_API_KEY=sk-...
+```
+
+4. **Optionally enable auto-capture** (memory extraction from conversations):
+
+```bash
+# Required for auto-capture functionality
+MEMORY_MODEL=gpt-4o-mini
+MEMORY_API_URL=https://api.openai.com/v1
+MEMORY_API_KEY=sk-...
+```
+
+5. **Start the services:**
+
+```bash
 docker compose up -d
 ```
+
+The `.env.example` file contains **all** configurable environment variables with descriptions, defaults, and examples. Every variable has a sensible default — you only need to set the required ones listed above.
+
+> **Tip:** For a minimal setup, your entire `.env` can be as short as:
+>
+> ```
+> SERVER_API_KEY=my-secret-key
+> EMBEDDING_API_URL=https://api.openai.com/v1
+> EMBEDDING_MODEL=text-embedding-3-small
+> EMBEDDING_API_KEY=sk-...
+> POSTGRES_SSL=false
+> ```
 
 Server runs on **http://localhost:4747** — open the WebUI and enter your `SERVER_API_KEY` in the settings panel (gear icon).
 
@@ -334,15 +368,21 @@ The client plugin compiles to a single JS file (`plugin/dist/opencode-memnet.js`
 ## Docker Deployment
 
 ```bash
-# Using docker-compose (see Server Installation above)
+# 1. Copy and configure environment
+cp .env.example .env
+# Edit .env — set SERVER_API_KEY, EMBEDDING_API_URL, EMBEDDING_MODEL, EMBEDDING_API_KEY
+
+# 2. Start all services
 docker compose up -d
 
-# View logs
+# 3. View logs
 docker compose logs -f
 
-# Stop
+# 4. Stop
 docker compose down
 ```
+
+See `.env.example` for the full list of configuration options with descriptions and defaults.
 
 ---
 
