@@ -1,39 +1,36 @@
 {
-  "name": "opencode-memnet",
-  "version": "2.14.3",
-  "description": "OpenCode plugin that gives coding agents persistent memory using local vector database",
+  "name": "opencode-memnet-server",
+  "version": "3.0.0",
+  "description": "Standalone memory server for OpenCode persistent AI memory",
   "type": "module",
-  "main": "dist/plugin.js",
-  "types": "dist/index.d.ts",
   "exports": {
-    ".": {
-      "import": "./dist/plugin.js",
-      "types": "./dist/index.d.ts"
-    },
     "./server": {
-      "import": "./dist/server.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/server.js"
     }
   },
   "scripts": {
     "build": "bunx tsc && mkdir -p dist/web && cp -r src/web/* dist/web/",
+    "build:plugin": "cd plugin && bun run build",
+    "build:all": "bun run build && bun run build:plugin",
     "start:server": "bun run dist/server.js",
     "dev:server": "bun run --watch src/server.ts",
+    "dev:plugin": "cd plugin && bun run build",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
+    "typecheck:plugin": "cd plugin && bun run typecheck",
+    "typecheck:all": "bun run typecheck && bun run typecheck:plugin",
     "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js,css,html}\"",
     "prepare": "husky"
   },
   "keywords": [
     "opencode",
-    "plugin",
     "memory",
+    "server",
     "vector-database",
     "ai",
-    "coding-agent",
-    "local",
-    "standalone"
+    "postgres",
+    "pgvector"
   ],
   "author": "opencode-memnet",
   "license": "MIT",
@@ -58,13 +55,6 @@
     "lint-staged": "^16.2.7",
     "prettier": "^3.4.2",
     "typescript": "^5.7.3"
-  },
-  "opencode": {
-    "type": "plugin",
-    "hooks": [
-      "chat.message",
-      "event"
-    ]
   },
   "files": [
     "dist",
