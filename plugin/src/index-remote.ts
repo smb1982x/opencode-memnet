@@ -4,11 +4,11 @@ import type { Part } from "@opencode-ai/sdk";
 import { tool } from "@opencode-ai/plugin";
 
 import { remoteMemoryClient } from "./services/remote-client.js";
-import { getTags, type TagsConfig } from "../../shared/tags.js";
-import { stripPrivateContent, isFullyPrivate } from "../../shared/privacy.js";
+import { getTags, type TagsConfig } from "./lib/tags.js";
+import { stripPrivateContent, isFullyPrivate } from "./lib/privacy.js";
 
-import { isClientConfigured, CLIENT_CONFIG, initClientConfig } from "../../shared/client-config.js";
-import { log } from "../../shared/logger.js";
+import { isClientConfigured, CLIENT_CONFIG, initClientConfig } from "./lib/client-config.js";
+import { log } from "./lib/logger.js";
 
 // NOTE: Must match src/config.ts DEFAULTS.containerTagPrefix — if server changes this, update both places.
 const TAGS_CONFIG: TagsConfig = {

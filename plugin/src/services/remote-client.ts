@@ -1,6 +1,6 @@
 // plugin/src/services/remote-client.ts
-import { CLIENT_CONFIG } from "../../../shared/client-config.js";
-import { log } from "../../../shared/logger.js";
+import { CLIENT_CONFIG } from "../lib/client-config.js";
+import { log } from "../lib/logger.js";
 
 const DEFAULT_TIMEOUT = 30_000;
 

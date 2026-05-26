@@ -6,7 +6,7 @@ export const id = "opencode-memnet";
 const noopPlugin: Plugin = async () => ({});
 
 async function resolvePlugin(): Promise<Plugin> {
-  const { initClientConfig, isClientConfigured } = await import("../../shared/client-config.js");
+  const { initClientConfig, isClientConfigured } = await import("./lib/client-config.js");
   // First init with cwd for default config gating. index-remote.ts re-inits with correct ctx.directory for actual config loading.
   initClientConfig(process.cwd());
 
