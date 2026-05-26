@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 describe("OpenCode plugin loader bundle boundary", () => {
   it("does not pull local embedding transformer internals into the plugin-loader bundle", async () => {
     const result = await Bun.build({
-      entrypoints: ["./dist/plugin.js"],
+      entrypoints: ["./plugin/dist/opencode-memnet.js"],
       target: "bun",
       packages: "bundle",
     });
