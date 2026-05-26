@@ -13,7 +13,12 @@ set -euo pipefail
 
 SERVER_URL="${OPENCODE_MEM_SERVER_URL:-http://localhost:4747}"
 API_KEY="${OPENCODE_MEM_API_KEY:-}"
-CONFIG_DIR="${HOME}/.config/opencode"
+TARGET_DIR="${1:-}"
+if [ -n "${TARGET_DIR}" ]; then
+  CONFIG_DIR="${TARGET_DIR}/.opencode"
+else
+  CONFIG_DIR="${HOME}/.config/opencode"
+fi
 CONFIG_FILE="${CONFIG_DIR}/opencode-memnet.jsonc"
 JSON_FILE="${CONFIG_DIR}/opencode-memnet.json"
 
