@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo/logo-banner.svg" alt="opencode MEMnet" width="400">
+  <img src="docs/logo/logo-banner.svg" alt="opencode MEMnet">
 </p>
 
 # opencode-memnet
