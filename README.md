@@ -11,6 +11,9 @@ This project builds upon and would not exist without the original [OpenCode Memo
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+  - [Server Quickstart](#server-quickstart)
+  - [Client / Plugin Quickstart](#client--plugin-quickstart)
+  - [Verify](#verify)
 - [What is opencode-memnet?](#what-is-opencode-memnet)
 - [Architecture](#architecture)
 - [Server Installation](#server-installation)
@@ -43,7 +46,13 @@ This project builds upon and would not exist without the original [OpenCode Memo
 
 Get a working memory server and client plugin in under two minutes.
 
-**1. Install the server (Docker, bundled database):**
+> **⚠️ `curl | bash` note:** Piping to bash is non-interactive — it cannot prompt you for values. **All configuration must be provided via environment variables** prepended before `bash`. See the variable tables below.
+
+---
+
+### Server Quickstart
+
+Install the memory server with Docker Compose (bundled PostgreSQL + pgvector):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-server.sh \
@@ -54,7 +63,49 @@ curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/script
     bash
 ```
 
-**2. Install the client plugin:**
+**Required variables** (server will not start without these):
+
+| Variable            | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| `EMBEDDING_API_URL` | OpenAI-compatible embedding API base URL              |
+| `EMBEDDING_MODEL`   | Embedding model name (e.g., `text-embedding-3-small`) |
+| `EMBEDDING_API_KEY` | API key for the embedding service                     |
+| `SERVER_API_KEY`    | Secret key for authenticating API requests            |
+
+**Optional variables** (for auto-capture and tuning):
+
+| Variable                   | Default                     | Description                                            |
+| -------------------------- | --------------------------- | ------------------------------------------------------ |
+| `MEMORY_MODEL`             | --                          | Chat model for memory extraction (e.g., `gpt-4o-mini`) |
+| `MEMORY_API_URL`           | --                          | Chat completions API URL                               |
+| `MEMORY_API_KEY`           | --                          | API key for chat completions                           |
+| `SERVER_PORT`              | `4747`                      | Port the server listens on                             |
+| `OPENCODE_MEM_INSTALL_DIR` | `~/.opencode-memnet-server` | Directory to clone and install into                    |
+
+<details>
+<summary>Full example with auto-capture enabled</summary>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-server.sh \
+  | EMBEDDING_API_URL=https://api.openai.com/v1 \
+    EMBEDDING_MODEL=text-embedding-3-small \
+    EMBEDDING_API_KEY=sk-... \
+    SERVER_API_KEY=my-secret \
+    MEMORY_MODEL=gpt-4o-mini \
+    MEMORY_API_URL=https://api.openai.com/v1 \
+    MEMORY_API_KEY=sk-... \
+    bash
+```
+
+</details>
+
+**What the script does:** Checks for Docker, clones the repo into `OPENCODE_MEM_INSTALL_DIR`, writes a `.env` file with your variables, and starts `docker compose up -d --build`.
+
+---
+
+### Client / Plugin Quickstart
+
+Install the OpenCode client plugin config on any machine that can reach the server:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-client.sh \
@@ -63,13 +114,33 @@ curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/script
     bash
 ```
 
-**3. Verify it is running:**
+**Variables:**
+
+| Variable                  | Required | Default                 | Description                                    |
+| ------------------------- | -------- | ----------------------- | ---------------------------------------------- |
+| `OPENCODE_MEM_API_KEY`    | **Yes**  | --                      | API key matching the server's `SERVER_API_KEY` |
+| `OPENCODE_MEM_SERVER_URL` | No       | `http://localhost:4747` | URL where the memory server is reachable       |
+
+**Install into a specific project** (creates `.opencode/opencode-memnet.json`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/scripts/install-client.sh \
+  | OPENCODE_MEM_SERVER_URL=http://myserver:4747 \
+    OPENCODE_MEM_API_KEY=my-secret \
+    bash -s /path/to/my/project
+```
+
+**What the script does:** Creates the config directory (`~/.config/opencode/` or `<project>/.opencode/`), writes `opencode-memnet.json` with your server URL and API key.
+
+---
+
+### Verify
 
 ```bash
 curl http://localhost:4747/api/health
 ```
 
-Done. Start OpenCode and the plugin will connect automatically.
+Done. Start OpenCode and the plugin will connect automatically. For detailed installation options (external databases, manual setup, npm), see [Server Installation](#server-installation) and [Client Plugin Installation](#client-plugin-installation).
 
 ---
 
