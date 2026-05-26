@@ -20,7 +20,7 @@ else
   CONFIG_DIR="${HOME}/.config/opencode"
 fi
 CONFIG_FILE="${CONFIG_DIR}/opencode-memnet.jsonc"
-JSON_FILE="${CONFIG_DIR}/opencode-memnet.json"
+JSON_FILE="${CONFIG_DIR}/opencode-memnet.jsonc"
 
 # Ensure config directory exists
 mkdir -p "${CONFIG_DIR}"
@@ -30,8 +30,9 @@ if [ -z "${API_KEY}" ]; then
   echo "[opencode-memnet] The plugin will not activate without an API key."
 fi
 
-# Write JSON config (takes precedence over .jsonc for override values)
+# Write JSONC config
 cat > "${JSON_FILE}" << 'EOF'
+// opencode MEMnet client configuration
 {
   "serverUrl": "SERVER_URL_VALUE",
   "apiKey": "API_KEY_VALUE",

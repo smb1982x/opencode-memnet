@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo/logo-banner.svg" alt="opencode MEMnet" width="400">
+</p>
+
 # opencode-memnet
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/tickernelz/opencode-mem) [![Version](https://img.shields.io/badge/version-3.0.0-green)](package.json)
@@ -41,7 +45,7 @@ This project builds upon and would not exist without the original [OpenCode Memo
 
 ## Quick Start
 
-Get a working memory server and client plugin in under two minutes.
+Get a working memory server and client plugin in a few minutes.
 
 **1. Install the server (Docker, bundled database):**
 
@@ -122,8 +126,8 @@ Spins up both the server and a pgvector Postgres container. Good for testing, lo
 
 ```bash
 # 1. Clone the repository
-git clone https://git.phrk.org/pub/opencode-memnet.git
-cd opencode-memnet
+git clone https://github.com/tickernelz/opencode-mem.git
+cd opencode-mem
 
 # 2. Create your .env file
 cp .env.example .env
@@ -180,8 +184,8 @@ Uses an existing Postgres instance you manage separately (e.g., AWS RDS, Supabas
 
 ```bash
 # 1. Clone the repository
-git clone https://git.phrk.org/pub/opencode-memnet.git
-cd opencode-memnet
+git clone https://github.com/tickernelz/opencode-mem.git
+cd opencode-mem
 
 # 2. Create your .env file
 cp .env.example .env
@@ -214,8 +218,8 @@ For non-Docker installations, or when running directly on the host.
 
 ```bash
 # 1. Clone and install
-git clone https://git.phrk.org/pub/opencode-memnet.git
-cd opencode-memnet
+git clone https://github.com/tickernelz/opencode-mem.git
+cd opencode-mem
 bun install
 
 # 2. Start PostgreSQL with pgvector
@@ -250,13 +254,13 @@ mem.example.com {
 
 **Restricting access to localhost:**
 
-By default, `HOST_PORT=4747` binds to all interfaces. To restrict to localhost only:
+By default, the server binds to all interfaces. To restrict to localhost only, set `EXTERNAL_HOST`:
 
 ```bash
-HOST_PORT=127.0.0.1:4747
+EXTERNAL_HOST=127.0.0.1
 ```
 
-This sets the host-side port mapping so only local connections reach the server. The container-internal `SERVER_HOST` (default `0.0.0.0`) does not need to change.
+`HOST_PORT` is always just a port number (e.g., `4747`). The docker-compose port mapping uses `${EXTERNAL_HOST:-localhost}:${HOST_PORT:-4747}:${SERVER_PORT:-4747}`, so setting `EXTERNAL_HOST=127.0.0.1` binds the host-side port to localhost only. Set `EXTERNAL_HOST=0.0.0.0` to bind to all interfaces.
 
 **Backups:**
 
@@ -271,7 +275,7 @@ For external databases, use your provider's backup tooling.
 **Upgrade procedure:**
 
 ```bash
-cd opencode-memnet
+cd opencode-mem
 git pull --ff-only
 docker compose up -d --build
 ```
@@ -299,9 +303,9 @@ The client plugin is distributed as an npm package and compiles to a single JS f
 Install the plugin globally so it is available in all projects:
 
 ```bash
-bun add -g opencode-memnet
+bun add -g opencode-memnet-plugin
 # or
-npm install -g opencode-memnet
+npm install -g opencode-memnet-plugin
 ```
 
 Then create the configuration file (see [Client Configuration File](#client-configuration-file) for all options):
@@ -329,12 +333,10 @@ curl -fsSL https://raw.githubusercontent.com/tickernelz/opencode-mem/main/script
 
 **Environment variables accepted by the install script:**
 
-| Variable                      | Required | Default                 | Description                             |
-| ----------------------------- | -------- | ----------------------- | --------------------------------------- |
-| `OPENCODE_MEM_SERVER_URL`     | No       | `http://localhost:4747` | Server URL                              |
-| `OPENCODE_MEM_API_KEY`        | Yes      | --                      | API key for server authentication       |
-| `OPENCODE_MEM_CHAT_ENABLED`   | No       | `true`                  | Enable chat message context injection   |
-| `OPENCODE_MEM_CHAT_AUTOREPLY` | No       | `true`                  | Enable auto-capture toast notifications |
+| Variable                  | Required | Default                 | Description                       |
+| ------------------------- | -------- | ----------------------- | --------------------------------- |
+| `OPENCODE_MEM_SERVER_URL` | No       | `http://localhost:4747` | Server URL                        |
+| `OPENCODE_MEM_API_KEY`    | Yes      | --                      | API key for server authentication |
 
 To install into a specific project directory (creates `.opencode/opencode-memnet.jsonc`):
 
@@ -377,48 +379,56 @@ These must be set before the server will start.
 
 #### Optional Variables
 
-| Variable                    | Default   | Description                                                                                                          |
-| --------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------- |
-| `HOST_PORT`                 | `4747`    | Host-side port mapping for Docker. Format: `[IP:]PORT` (e.g., `127.0.0.1:4747`). Ignored when running outside Docker |
-| `SERVER_PORT`               | `4747`    | Port the server listens on inside the container                                                                      |
-| `SERVER_HOST`               | `0.0.0.0` | Network interface the server binds to inside the container                                                           |
-| `POSTGRES_SSL`              | `require` | SSL mode. Bundled Docker defaults to `false`; external DB defaults to `require`                                      |
-| `POSTGRES_MAX_CONNECTIONS`  | `10`      | Connection pool size                                                                                                 |
-| `POSTGRES_VECTOR_TYPE`      | `vector`  | pgvector column type: `vector` or `halfvec`                                                                          |
-| `SIMILARITY_THRESHOLD`      | `0.6`     | Minimum cosine similarity for search results (0.0--1.0)                                                              |
-| `MAX_MEMORIES`              | `10`      | Max memories returned in context injection                                                                           |
-| `INJECT_PROFILE`            | `true`    | Include learned user profile in context injection                                                                    |
-| `MEMORY_MODEL`              | --        | Chat model for memory extraction (required for auto-capture)                                                         |
-| `MEMORY_API_URL`            | --        | Chat completions API URL (required for auto-capture)                                                                 |
-| `MEMORY_API_KEY`            | --        | API key for chat completions (required for auto-capture)                                                             |
-| `MEMORY_TEMPERATURE`        | `0.3`     | Temperature for memory generation (set to `false` to disable)                                                        |
-| `WEB_SERVER_ALLOWED_ORIGIN` | `*`       | CORS allowed origin                                                                                                  |
-| `DISABLE_WEBUI_AUTH`        | `false`   | Disable API key auth for WebUI. **WARNING:** Secure the server by other means (reverse proxy, firewall, etc.)        |
-| `DISABLE_CLIENT_AUTH`       | `false`   | Disable API key auth for client plugin. **WARNING:** Secure the server by other means                                |
+| Variable                    | Default     | Description                                                                                                   |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `EXTERNAL_HOST`             | `localhost` | IP/hostname the Docker port binds to. Set to `127.0.0.1` for localhost-only, `0.0.0.0` for all interfaces     |
+| `HOST_PORT`                 | `4747`      | Host-side port number for Docker. Ignored when running outside Docker                                         |
+| `SERVER_PORT`               | `4747`      | Port the server listens on inside the container                                                               |
+| `SERVER_HOST`               | `0.0.0.0`   | Network interface the server binds to inside the container                                                    |
+| `POSTGRES_SSL`              | `require`   | SSL mode. Bundled Docker defaults to `false`; external DB defaults to `require`                               |
+| `POSTGRES_MAX_CONNECTIONS`  | `10`        | Connection pool size                                                                                          |
+| `POSTGRES_VECTOR_TYPE`      | `vector`    | pgvector column type: `vector` or `halfvec`                                                                   |
+| `SIMILARITY_THRESHOLD`      | `0.6`       | Minimum cosine similarity for search results (0.0--1.0)                                                       |
+| `MAX_MEMORIES`              | `10`        | Max memories returned in context injection                                                                    |
+| `INJECT_PROFILE`            | `true`      | Include learned user profile in context injection                                                             |
+| `MEMORY_MODEL`              | --          | Chat model for memory extraction (required for auto-capture)                                                  |
+| `MEMORY_API_URL`            | --          | Chat completions API URL (required for auto-capture)                                                          |
+| `MEMORY_API_KEY`            | --          | API key for chat completions (required for auto-capture)                                                      |
+| `MEMORY_TEMPERATURE`        | `0.3`       | Temperature for memory generation (set to `false` to disable)                                                 |
+| `WEB_SERVER_ALLOWED_ORIGIN` | `*`         | CORS allowed origin                                                                                           |
+| `DISABLE_WEBUI_AUTH`        | `false`     | Disable API key auth for WebUI. **WARNING:** Secure the server by other means (reverse proxy, firewall, etc.) |
+| `DISABLE_CLIENT_AUTH`       | `false`     | Disable API key auth for client plugin. **WARNING:** Secure the server by other means                         |
 
 #### Advanced Variables
 
-| Variable                             | Default | Description                                                            |
-| ------------------------------------ | ------- | ---------------------------------------------------------------------- |
-| `POSTGRES_IDLE_TIMEOUT_SECONDS`      | `30`    | Idle connection timeout                                                |
-| `POSTGRES_CONNECT_TIMEOUT_SECONDS`   | `10`    | Connection establishment timeout                                       |
-| `POSTGRES_HNSW_EF_SEARCH`            | `128`   | HNSW index search parameter (higher = better recall, slower)           |
-| `POSTGRES_HNSW_EF_CONSTRUCTION`      | `256`   | HNSW index build parameter (higher = better quality, slower build)     |
-| `EMBEDDING_DIMENSIONS`               | auto    | Override embedding vector dimensions (0 = auto-detect from model name) |
-| `EMBEDDING_MAX_TOKENS_CONTENT`       | `2048`  | Max tokens for content text before embedding                           |
-| `EMBEDDING_MAX_TOKENS_TAGS`          | `256`   | Max tokens for tag text before embedding                               |
-| `EMBEDDING_MAX_TOKENS_QUERY`         | `512`   | Max tokens for search queries before embedding                         |
-| `AUTO_CAPTURE_MAX_ITERATIONS`        | `5`     | Max auto-capture iterations per session                                |
-| `AUTO_CAPTURE_ITERATION_TIMEOUT`     | `30000` | Auto-capture timeout in milliseconds                                   |
-| `AUTO_CAPTURE_LANGUAGE`              | `auto`  | Language for generated memories (e.g., `en`, `zh`, `auto`)             |
-| `AI_SESSION_RETENTION_DAYS`          | `7`     | Days to retain AI session data                                         |
-| `AUTO_CLEANUP_RETENTION_DAYS`        | `90`    | Days to retain memories (0 = disable auto-cleanup)                     |
-| `USER_PROFILE_ANALYSIS_INTERVAL`     | `10`    | Sessions between automatic profile analysis                            |
-| `USER_PROFILE_MAX_PREFERENCES`       | `20`    | Max learned preferences per profile                                    |
-| `USER_PROFILE_MAX_PATTERNS`          | `15`    | Max detected patterns per profile                                      |
-| `USER_PROFILE_MAX_WORKFLOWS`         | `10`    | Max identified workflows per profile                                   |
-| `USER_PROFILE_CONFIDENCE_DECAY_DAYS` | `30`    | Days over which confidence scores decay                                |
-| `USER_PROFILE_CHANGELOG_RETENTION`   | `5`     | Profile changelog versions to retain                                   |
+| Variable                             | Default       | Description                                                            |
+| ------------------------------------ | ------------- | ---------------------------------------------------------------------- |
+| `POSTGRES_IDLE_TIMEOUT_SECONDS`      | `30`          | Idle connection timeout                                                |
+| `POSTGRES_CONNECT_TIMEOUT_SECONDS`   | `10`          | Connection establishment timeout                                       |
+| `POSTGRES_HNSW_EF_SEARCH`            | `128`         | HNSW index search parameter (higher = better recall, slower)           |
+| `POSTGRES_HNSW_EF_CONSTRUCTION`      | `256`         | HNSW index build parameter (higher = better quality, slower build)     |
+| `EMBEDDING_DIMENSIONS`               | auto          | Override embedding vector dimensions (0 = auto-detect from model name) |
+| `EMBEDDING_MAX_TOKENS_CONTENT`       | `2048`        | Max tokens for content text before embedding                           |
+| `EMBEDDING_MAX_TOKENS_TAGS`          | `256`         | Max tokens for tag text before embedding                               |
+| `EMBEDDING_MAX_TOKENS_QUERY`         | `512`         | Max tokens for search queries before embedding                         |
+| `EMBEDDING_MAX_TOKENS_MIGRATION`     | `512`         | Max tokens for tag migration embeddings                                |
+| `EMBEDDING_TRUNCATION_CONTENT`       | `throw_error` | Truncation strategy for content (`throw_error` or `truncate`)          |
+| `EMBEDDING_TRUNCATION_TAGS`          | `throw_error` | Truncation strategy for tags (`throw_error` or `truncate`)             |
+| `EMBEDDING_TRUNCATION_QUERY`         | `throw_error` | Truncation strategy for queries (`throw_error` or `truncate`)          |
+| `EMBEDDING_TRUNCATION_MIGRATION`     | `throw_error` | Truncation strategy for tag migration (`throw_error` or `truncate`)    |
+| `OPENCODE_PROVIDER`                  | --            | LLM provider for OpenCode integration                                  |
+| `OPENCODE_MODEL`                     | --            | LLM model for OpenCode integration                                     |
+| `AUTO_CAPTURE_MAX_ITERATIONS`        | `5`           | Max auto-capture iterations per session                                |
+| `AUTO_CAPTURE_ITERATION_TIMEOUT`     | `30000`       | Auto-capture timeout in milliseconds                                   |
+| `AUTO_CAPTURE_LANGUAGE`              | `auto`        | Language for generated memories (e.g., `en`, `zh`, `auto`)             |
+| `AI_SESSION_RETENTION_DAYS`          | `7`           | Days to retain AI session data                                         |
+| `AUTO_CLEANUP_RETENTION_DAYS`        | `90`          | Days to retain memories (0 = disable auto-cleanup)                     |
+| `USER_PROFILE_ANALYSIS_INTERVAL`     | `10`          | Sessions between automatic profile analysis                            |
+| `USER_PROFILE_MAX_PREFERENCES`       | `20`          | Max learned preferences per profile                                    |
+| `USER_PROFILE_MAX_PATTERNS`          | `15`          | Max detected patterns per profile                                      |
+| `USER_PROFILE_MAX_WORKFLOWS`         | `10`          | Max identified workflows per profile                                   |
+| `USER_PROFILE_CONFIDENCE_DECAY_DAYS` | `30`          | Days over which confidence scores decay                                |
+| `USER_PROFILE_CHANGELOG_RETENTION`   | `5`           | Profile changelog versions to retain                                   |
 
 > **Tip:** Docker Compose database variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) configure the bundled `db` service only and are not read by the server itself. See [.env.example](.env.example) for details.
 
@@ -688,19 +698,19 @@ If this fails:
 1. Check the container is running: `docker compose ps`
 2. Check logs: `docker compose logs -f`
 3. Verify the port is not in use: `ss -tlnp | grep 4747`
-4. If using `HOST_PORT=127.0.0.1:4747`, ensure you are curling from the same machine
+4. If using `EXTERNAL_HOST=127.0.0.1`, ensure you are curling from the same machine
 
 ### Client plugin does not activate
 
 1. Verify the config file exists at `~/.config/opencode/opencode-memnet.jsonc` (global) or `.opencode/opencode-memnet.jsonc` (project)
 2. Verify `apiKey` and `serverUrl` are set and correct
 3. Verify the server is reachable from the client machine: `curl http://your-server:4747/api/health`
-4. Check that the plugin is installed: `bun pm ls -g` or `npm ls -g opencode-memnet`
+4. Check that the plugin is installed: `bun pm ls -g` or `npm ls -g opencode-memnet-plugin`
 
 ### "Cannot connect to server" from the plugin
 
 1. Check that the server is running: `curl http://your-server:4747/api/health`
-2. If the server is on a remote machine, ensure the port is open and the `HOST_PORT` binding allows external access (use `0.0.0.0:4747` or a specific IP, not `127.0.0.1:4747`)
+2. If the server is on a remote machine, ensure the port is open and `EXTERNAL_HOST` allows external access (use `EXTERNAL_HOST=0.0.0.0` or a specific IP, not `127.0.0.1`)
 3. Verify `OPENCODE_MEM_SERVER_URL` or `serverUrl` in the config matches the actual server address
 
 ### Docker compose build fails

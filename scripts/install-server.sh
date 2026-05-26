@@ -13,7 +13,7 @@
 #   EMBEDDING_API_URL   — Embedding API endpoint
 #   EMBEDDING_MODEL     — Embedding model name
 #   EMBEDDING_API_KEY   — API key for embedding service
-#   SERVER_API_KEY      — Secret key for server authentication
+#   SERVER_API_KEY      — Secret key for server authentication (optional; warn if empty)
 #
 # Optional environment variables:
 #   MEMORY_MODEL        — Chat model for auto-capture
@@ -27,7 +27,9 @@ set -euo pipefail
 : "${EMBEDDING_API_URL:?ERROR: EMBEDDING_API_URL is required}"
 : "${EMBEDDING_MODEL:?ERROR: EMBEDDING_MODEL is required}"
 : "${EMBEDDING_API_KEY:?ERROR: EMBEDDING_API_KEY is required}"
-: "${SERVER_API_KEY:?ERROR: SERVER_API_KEY is required}"
+if [ -z "${SERVER_API_KEY:-}" ]; then
+  echo "[opencode-memnet] WARNING: SERVER_API_KEY is not set. Set it or disable auth with DISABLE_WEBUI_AUTH=true and DISABLE_CLIENT_AUTH=true."
+fi
 
 INSTALL_DIR="${OPENCODE_MEM_INSTALL_DIR:-${HOME}/.opencode-memnet-server}"
 SERVER_PORT="${SERVER_PORT:-4747}"
@@ -64,6 +66,7 @@ SERVER_PORT=SERVER_PORT_VALUE
 MEMORY_MODEL=MEMORY_MODEL_VALUE
 MEMORY_API_URL=MEMORY_API_URL_VALUE
 MEMORY_API_KEY=MEMORY_API_KEY_VALUE
+POSTGRES_SSL=false
 EOF
 sed -i "s|EMBEDDING_API_URL_VALUE|${EMBEDDING_API_URL}|g" "${INSTALL_DIR}/.env"
 sed -i "s|EMBEDDING_MODEL_VALUE|${EMBEDDING_MODEL}|g" "${INSTALL_DIR}/.env"

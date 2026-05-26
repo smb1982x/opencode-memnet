@@ -22,14 +22,13 @@ Browser-based admin UI for exploring, searching, and managing memories and user 
 
 ### Key files
 
-| File                          | Role                                                                                                                                                                                                            |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.html`                  | Page structure: header, scope tabs (Project / Profile), settings panel (API key), controls bar, memory list, add-memory form, edit modal, toast, migration modals, changelog modal                              |
-| `app.js`                      | All application logic: API calls (`fetchAPI` with Bearer auth), CRUD operations, rendering (`renderMemories`, `renderUserProfile`), pagination, search, bulk selection, auto-refresh (30s), migration workflows |
-| `styles.css`                  | Full stylesheet: layout, card styles, badges, modals, animations, settings panel, responsive breakpoints                                                                                                        |
-| `i18n.js`                     | Translation dictionaries (EN/ZH), `t()` helper with interpolation, `applyLanguage()` for DOM updates                                                                                                            |
-| `favicon.ico`                 | Browser tab icon                                                                                                                                                                                                |
-| `opencode-memnet-diagram.svg` | Architecture diagram (SVG) served by the static file handler                                                                                                                                                    |
+| File          | Role                                                                                                                                                                                                            |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.html`  | Page structure: header, scope tabs (Project / Profile), settings panel (API key), controls bar, memory list, add-memory form, edit modal, toast, migration modals, changelog modal                              |
+| `app.js`      | All application logic: API calls (`fetchAPI` with Bearer auth), CRUD operations, rendering (`renderMemories`, `renderUserProfile`), pagination, search, bulk selection, auto-refresh (30s), migration workflows |
+| `styles.css`  | Full stylesheet: layout, card styles, badges, modals, animations, settings panel, responsive breakpoints                                                                                                        |
+| `i18n.js`     | Translation dictionaries (EN/ZH), `t()` helper with interpolation, `applyLanguage()` for DOM updates                                                                                                            |
+| `favicon.ico` | Browser tab icon                                                                                                                                                                                                |
 
 ## Flow
 
