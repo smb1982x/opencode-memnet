@@ -356,7 +356,15 @@
   4. `import { isClientConfigured, CLIENT_CONFIG, initClientConfig } from "./config.js";` → `import { isClientConfigured, CLIENT_CONFIG, initClientConfig } from "../../shared/client-config.js";`
   5. `import { log } from "./services/logger.js";` → `import { log } from "../../shared/logger.js";`
   6. Add new import: `import { type TagsConfig } from "../../shared/tags.js";`
-  7. Add constant after imports: `const TAGS_CONFIG: TagsConfig = { containerTagPrefix: "opencode", userEmailOverride: undefined, userNameOverride: undefined };`
+  7. Add constant after imports:
+     ```typescript
+     // NOTE: Must match src/config.ts DEFAULTS.containerTagPrefix — if server changes this, update both places.
+     const TAGS_CONFIG: TagsConfig = {
+       containerTagPrefix: "opencode",
+       userEmailOverride: undefined,
+       userNameOverride: undefined,
+     };
+     ```
   8. Change call: `const tags = await getTags(directory);` → `const tags = await getTags(directory, TAGS_CONFIG);`
 - **Verify**:
   - `grep -c "services/tags.js" plugin/src/index-remote.ts` returns 0
@@ -380,6 +388,7 @@
 
   async function resolvePlugin() {
     const { initClientConfig, isClientConfigured } = await import("../../shared/client-config.js");
+    // First init with cwd for default config gating. index-remote.ts re-inits with correct ctx.directory for actual config loading.
     initClientConfig(process.cwd());
 
     if (!isClientConfigured()) {
@@ -437,10 +446,11 @@
      ```
   7. Update `"scripts"`: Add new scripts:
      ```json
-     "build:plugin": "cd plugin && bun run build",
-     "build:all": "bun run build && bun run build:plugin",
-     "typecheck:plugin": "cd plugin && bun run typecheck",
-     "typecheck:all": "bun run typecheck && bun run typecheck:plugin"
+      "build:plugin": "cd plugin && bun run build",
+      "build:all": "bun run build && bun run build:plugin",
+      "dev:plugin": "cd plugin && bun run build",
+      "typecheck:plugin": "cd plugin && bun run typecheck",
+      "typecheck:all": "bun run typecheck && bun run typecheck:plugin"
      ```
   8. Update `"keywords"`: Replace with server-focused keywords:
      ```json
@@ -449,6 +459,7 @@
   9. Bump `"version"`: `"2.14.3"` → `"3.0.0"`
   10. `"files"`: Keep as `["dist", "package.json"]`
 - **Verify**: `cat package.json | python3 -m json.tool` exits 0. `grep '"main"' package.json` returns 0 (removed). `grep '"types"' package.json` returns 0 (removed). `grep '"opencode"' package.json` returns 0 (removed). `grep 'build:plugin' package.json` returns 1.
+- **Post-Edit Action**: Run `bun install` from the repo root after editing `package.json` to update the lockfile.
 - **Commit message**: `feat: update root package.json for server-only role with plugin build scripts`
 
 ### Step 4.3: Install plugin dependencies
@@ -465,33 +476,25 @@
 
 ## Phase 5: Clean Server Config and Deprecate Legacy Files
 
-### Step 5.1: Remove client config exports from `src/config.ts`
+### Step 5.1: Add `@deprecated` annotations to client config exports in `src/config.ts`
 
 - **Files modified**: `src/config.ts`
-- **Action**: Remove the following from `src/config.ts` (lines 630-714):
-  - `ClientConfig` interface (lines 632-648)
-  - `CLIENT_DEFAULTS` constant (lines 650-666)
-  - `buildClientConfig()` function (lines 668-691)
-  - `CLIENT_CONFIG` singleton export (line 693)
-  - `initClientConfig()` function (lines 695-710)
-  - `isClientConfigured()` function (lines 712-714)
-  - The comment `// ── Client-only config (for thin remote plugin) ───────────────` (line 630)
+- **Action**: KEEP the client config exports in `src/config.ts` (lines 630-714) but add `@deprecated` JSDoc comments so they are still available to existing `src/` files that import them. The canonical versions are now in `shared/client-config.ts`. Add the following deprecation annotations:
+  1. Before `export interface ClientConfig` (line 632): add `/** @deprecated Canonical version is in shared/client-config.ts. Kept for backward compat — excluded from server build in Step 5.2. */`
+  2. Before `export let CLIENT_CONFIG` (line 693): add `/** @deprecated Canonical version is in shared/client-config.ts */`
+  3. Before `export function initClientConfig` (line 695): add `/** @deprecated Canonical version is in shared/client-config.ts */`
+  4. Before `export function isClientConfigured` (line 712): add `/** @deprecated Canonical version is in shared/client-config.ts */`
 
-  **IMPORTANT**: Do NOT remove:
-  - `CONFIG` export (line 628)
-  - `initConfig` export (line 750)
-  - `isConfigured` export (line 778)
-  - `serverConfigToGlobalConfig` export (line 791)
-  - `CONFIG_TEMPLATE` (line 226)
-  - `ensureConfigExists` (line 493)
-  - Anything above line 628
+  **Why not remove them?**: `src/plugin.ts`, `src/index-remote.ts`, and `src/services/remote-client.ts` still import these exports from `src/config.ts`. Removing them would break the server build. Instead, these files will be excluded from the server build in Step 5.2 (added to tsconfig `exclude`). The `@deprecated` tags signal intent while preserving compilation.
 
-- **Verify**: `grep -c "ClientConfig" src/config.ts` returns 0. `grep -c "CLIENT_CONFIG" src/config.ts` returns 0. `grep -c "initClientConfig" src/config.ts` returns 0. `grep -c "isClientConfigured" src/config.ts` returns 0. `grep -c "CONFIG " src/config.ts` returns 1 (the server CONFIG). `grep "serverConfigToGlobalConfig" src/config.ts` returns positive. File should be ~787 lines (down from 872).
-- **Commit message**: `feat: remove client config exports from server config.ts`
+- **Verify**: `grep -c "@deprecated" src/config.ts` returns 4. `grep "ClientConfig" src/config.ts` returns positive (still present). `grep "CLIENT_CONFIG" src/config.ts` returns positive (still present). `bunx tsc --noEmit` still passes (the @deprecated exports ensure src/ files still compile).
+- **Commit message**: `feat: deprecate client config exports in server config.ts (kept for backward compat)`
 
-### Step 5.2: Add `@deprecated` annotations to `src/plugin.ts` and `src/index.ts`
+- **Post-Step Verification**: Run `bunx tsc --noEmit` from the repo root to confirm the server still compiles. The `@deprecated` exports ensure `src/plugin.ts`, `src/index-remote.ts`, and `src/services/remote-client.ts` can still resolve their imports.
 
-- **Files modified**: `src/plugin.ts`, `src/index.ts`
+### Step 5.2: Add `@deprecated` annotations to `src/plugin.ts` and `src/index.ts`; exclude from server build
+
+- **Files modified**: `src/plugin.ts`, `src/index.ts`, `tsconfig.json`
 - **Action**:
   1. Prepend to `src/plugin.ts` (before existing code):
      ```typescript
@@ -505,12 +508,26 @@
      // This module is kept for reference only. In-process mode is removed in v3.0.0.
      // All users should migrate to server-client mode (plugin/ + server).
      ```
-- **Verify**: `head -3 src/plugin.ts` shows deprecation notice. `head -3 src/index.ts` shows deprecation notice.
-- **Commit message**: `feat: add @deprecated annotations to legacy src/plugin.ts and src/index.ts`
+  3. Update `tsconfig.json` `exclude` array to also exclude `src/plugin.ts`, `src/index.ts`, and `src/index-remote.ts` from the server build:
+     ```json
+     "exclude": ["node_modules", "dist", "plugin", "src/plugin.ts", "src/index.ts", "src/index-remote.ts"]
+     ```
+- **Verify**: `head -3 src/plugin.ts` shows deprecation notice. `head -3 src/index.ts` shows deprecation notice. After a server build (`bun run build`), verify `ls dist/` does NOT contain `plugin.js`, `index.js`, or `index-remote.js`.
+- **Commit message**: `feat: add @deprecated annotations to legacy src/plugin.ts and src/index.ts; exclude from server build`
 
 ---
 
 ## Phase 6: Verify Builds
+
+### Step 6.0: Run baseline tests
+
+- **Action**: Run `bun test` to establish baseline — confirm all existing tests pass before restructuring.
+- **Commands**:
+  ```bash
+  bun test
+  ```
+- **Verify**: All tests pass. Note any pre-existing failures for reference.
+- **Commit message**: (no commit — verification only)
 
 ### Step 6.1: Verify server build
 
@@ -556,6 +573,16 @@
 
 - **Commit message**: `chore: verify plugin compiles independently from server`
 
+### Step 6.5: Run tests after restructuring
+
+- **Action**: Run `bun test` again — confirm no regressions after all changes.
+- **Commands**:
+  ```bash
+  bun test
+  ```
+- **Verify**: All tests pass (same or better than baseline in Step 6.0). If any tests fail, investigate — they may import from `src/config.ts` client exports (now `@deprecated` but still present).
+- **Commit message**: (no commit — verification only)
+
 ---
 
 ## Phase 7: Write Quickstart Install Scripts
@@ -594,14 +621,16 @@
   fi
 
   # Write JSON config (takes precedence over .jsonc for override values)
-  cat > "${JSON_FILE}" << EOF
+  cat > "${JSON_FILE}" << 'EOF'
   {
-    "serverUrl": "${SERVER_URL}",
-    "apiKey": "${API_KEY}",
+    "serverUrl": "SERVER_URL_VALUE",
+    "apiKey": "API_KEY_VALUE",
     "autoCaptureEnabled": true,
     "showAutoCaptureToasts": true
   }
   EOF
+  sed -i "s|SERVER_URL_VALUE|${SERVER_URL}|g" "${JSON_FILE}"
+  sed -i "s|API_KEY_VALUE|${API_KEY}|g" "${JSON_FILE}"
 
   echo "[opencode-memnet] Client config written to ${JSON_FILE}"
   echo "[opencode-memnet] Server URL: ${SERVER_URL}"
@@ -680,16 +709,24 @@
   fi
 
   # Create .env file
-  cat > "${INSTALL_DIR}/.env" << EOF
-  EMBEDDING_API_URL=${EMBEDDING_API_URL}
-  EMBEDDING_MODEL=${EMBEDDING_MODEL}
-  EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
-  SERVER_API_KEY=${SERVER_API_KEY}
-  SERVER_PORT=${SERVER_PORT}
-  MEMORY_MODEL=${MEMORY_MODEL:-}
-  MEMORY_API_URL=${MEMORY_API_URL:-}
-  MEMORY_API_KEY=${MEMORY_API_KEY:-}
+  cat > "${INSTALL_DIR}/.env" << 'EOF'
+  EMBEDDING_API_URL=EMBEDDING_API_URL_VALUE
+  EMBEDDING_MODEL=EMBEDDING_MODEL_VALUE
+  EMBEDDING_API_KEY=EMBEDDING_API_KEY_VALUE
+  SERVER_API_KEY=SERVER_API_KEY_VALUE
+  SERVER_PORT=SERVER_PORT_VALUE
+  MEMORY_MODEL=MEMORY_MODEL_VALUE
+  MEMORY_API_URL=MEMORY_API_URL_VALUE
+  MEMORY_API_KEY=MEMORY_API_KEY_VALUE
   EOF
+  sed -i "s|EMBEDDING_API_URL_VALUE|${EMBEDDING_API_URL}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|EMBEDDING_MODEL_VALUE|${EMBEDDING_MODEL}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|EMBEDDING_API_KEY_VALUE|${EMBEDDING_API_KEY}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|SERVER_API_KEY_VALUE|${SERVER_API_KEY}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|SERVER_PORT_VALUE|${SERVER_PORT}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|MEMORY_MODEL_VALUE|${MEMORY_MODEL:-}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|MEMORY_API_URL_VALUE|${MEMORY_API_URL:-}|g" "${INSTALL_DIR}/.env"
+  sed -i "s|MEMORY_API_KEY_VALUE|${MEMORY_API_KEY:-}|g" "${INSTALL_DIR}/.env"
 
   # Start services
   echo "[opencode-memnet] Starting Docker services..."
@@ -714,6 +751,8 @@
 ---
 
 ## Phase 8: Create `.dockerignore` and Update Dockerfile (if needed)
+
+> **Known Spec Inconsistency**: SPEC §10.1 includes `COPY shared/` but this is superseded by DESIGN §2.2 and §9.1 — the server does NOT need `shared/`. The spec will be updated in a follow-up commit.
 
 ### Step 8.1: Create `.dockerignore`
 
@@ -742,6 +781,12 @@
 
 - **Action**: Review `Dockerfile`. It already only copies `src/` and does NOT need `shared/` (server keeps its own copies of all utilities in `src/services/`). No changes needed.
 - **Verify**: `Dockerfile` has `COPY src/ ./src/` and no reference to `shared/` or `plugin/`.
+- **Commit message**: (no commit — verification only)
+
+### Step 8.3: Verify `docker-compose.yml` needs no changes
+
+- **Action**: Review `docker-compose.yml`. It references `Dockerfile` for the build and reads environment variables from `.env` file. Both are already addressed (Dockerfile unchanged in Step 8.2, `.env` created by install script in Step 7.2). No changes needed.
+- **Verify**: `docker-compose.yml` references `Dockerfile` and `.env` — both are correct. No references to `plugin/` or `shared/`.
 - **Commit message**: (no commit — verification only)
 
 ---
@@ -1000,25 +1045,25 @@
 
 ## Summary of All Commits (in order)
 
-| #   | Commit Message                                                                                | Phase |
-| --- | --------------------------------------------------------------------------------------------- | ----- |
-| 1   | `feat: create shared/ directory with common utilities`                                        | 1     |
-| 2   | `feat: extract client config to shared/client-config.ts`                                      | 2     |
-| 3   | `feat: add parameterized shared/tags.ts with TagsConfig interface`                            | 2     |
-| 4   | `feat: create plugin/ directory with package.json, tsconfig, build script, and remote-client` | 3     |
-| 5   | `feat: add index-remote.ts to plugin with updated imports`                                    | 3     |
-| 6   | `feat: add new plugin entry point (remote-only, no legacy fallback)`                          | 3     |
-| 7   | `feat: exclude plugin/ from root tsconfig`                                                    | 4     |
-| 8   | `feat: update root package.json for server-only role with plugin build scripts`               | 4     |
-| 9   | `feat: remove client config exports from server config.ts`                                    | 5     |
-| 10  | `feat: add @deprecated annotations to legacy src/plugin.ts and src/index.ts`                  | 5     |
-| 11  | `chore: verify plugin compiles independently from server`                                     | 6     |
-| 12  | `feat: add non-interactive client install script`                                             | 7     |
-| 13  | `feat: add non-interactive server install script`                                             | 7     |
-| 14  | `chore: add .dockerignore to exclude plugin/shared/scripts from Docker build`                 | 8     |
-| 15  | `docs: rewrite README for separated plugin-server architecture`                               | 9     |
-| 16  | `chore: add plugin/dist and plugin/node_modules to .gitignore`                                | 10    |
-| 17  | `chore: bump version to 3.0.0, plugin-server separation complete`                             | 11    |
+| #   | Commit Message                                                                                          | Phase |
+| --- | ------------------------------------------------------------------------------------------------------- | ----- |
+| 1   | `feat: create shared/ directory with common utilities`                                                  | 1     |
+| 2   | `feat: extract client config to shared/client-config.ts`                                                | 2     |
+| 3   | `feat: add parameterized shared/tags.ts with TagsConfig interface`                                      | 2     |
+| 4   | `feat: create plugin/ directory with package.json, tsconfig, build script, and remote-client`           | 3     |
+| 5   | `feat: add index-remote.ts to plugin with updated imports`                                              | 3     |
+| 6   | `feat: add new plugin entry point (remote-only, no legacy fallback)`                                    | 3     |
+| 7   | `feat: exclude plugin/ from root tsconfig`                                                              | 4     |
+| 8   | `feat: update root package.json for server-only role with plugin build scripts`                         | 4     |
+| 9   | `feat: deprecate client config exports in server config.ts (kept for backward compat)`                  | 5     |
+| 10  | `feat: add @deprecated annotations to legacy src/plugin.ts and src/index.ts; exclude from server build` | 5     |
+| 11  | `chore: verify plugin compiles independently from server`                                               | 6     |
+| 12  | `feat: add non-interactive client install script`                                                       | 7     |
+| 13  | `feat: add non-interactive server install script`                                                       | 7     |
+| 14  | `chore: add .dockerignore to exclude plugin/shared/scripts from Docker build`                           | 8     |
+| 15  | `docs: rewrite README for separated plugin-server architecture`                                         | 9     |
+| 16  | `chore: add plugin/dist and plugin/node_modules to .gitignore`                                          | 10    |
+| 17  | `chore: bump version to 3.0.0, plugin-server separation complete`                                       | 11    |
 
 ---
 
@@ -1032,4 +1077,4 @@
 
 4. **`plugin/src/index-remote.ts` line 15** calls `initClientConfig(directory)` again even though `plugin.ts` already calls it. This is harmless (idempotent) but can be optionally removed for cleanliness.
 
-5. **Tests**: Existing tests may reference imports from `src/config.ts` that export `CLIENT_CONFIG` or `initClientConfig`. After Step 5.1 removes these from `src/config.ts`, any test importing them will break. Check `tests/` for such imports and update them to import from `../shared/client-config.js` or mock accordingly.
+5. **Tests**: Existing tests may import `CLIENT_CONFIG`, `initClientConfig`, or `isClientConfigured` from `src/config.ts`. After Step 5.1, these exports remain in `src/config.ts` with `@deprecated` annotations, so tests will continue to compile. The deprecated exports will be excluded from the server build via Step 5.2's tsconfig exclude. If tests need the canonical versions, update imports to `../shared/client-config.js`.
