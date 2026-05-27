@@ -1,6 +1,22 @@
 // src/server-config.ts
 import { resolveSecretValue } from "./services/secret-resolver.js";
 
+/**
+ * Parse a duration string like "24h", "7d", "1w" into hours.
+ * Returns 0 for unparseable values.
+ */
+export function parseDurationString(input: string): number {
+  const match = input.match(/^(\d+)(h|d|w)$/);
+  if (!match) return 0;
+  const n = parseInt(match[1]);
+  switch (match[2]) {
+    case "h": return n;
+    case "d": return n * 24;
+    case "w": return n * 24 * 7;
+    default: return 0;
+  }
+}
+
 export interface ServerConfig {
   port: number;
   host: string;
@@ -52,6 +68,7 @@ export interface ServerConfig {
   disableWebuiAuth: boolean;
   disableClientAuth: boolean;
   logLevel: "debug" | "info" | "warn" | "error";
+  clientWelcomeBackThreshold: number;
 }
 
 function getEmbeddingDimensions(model: string): number {
@@ -141,6 +158,7 @@ export function initServerConfig(): ServerConfig {
     logLevel:
       (env.LOG_LEVEL as "debug" | "info" | "warn" | "error") ||
       (env.DEBUG === "true" || env.DEBUG === "1" ? "debug" : "info"),
+    clientWelcomeBackThreshold: parseDurationString(env.CLIENT_WELCOME_BACK_THRESHOLD || "7d"),
   };
   return _config;
 }
