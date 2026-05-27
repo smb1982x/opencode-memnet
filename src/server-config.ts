@@ -8,7 +8,7 @@ import { resolveSecretValue } from "./services/secret-resolver.js";
 export function parseDurationString(input: string): number {
   const match = input.match(/^(\d+)(h|d|w)$/);
   if (!match) return 0;
-  const n = parseInt(match[1]);
+  const n = parseInt(match[1]!);
   switch (match[2]) {
     case "h": return n;
     case "d": return n * 24;

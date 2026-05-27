@@ -5,7 +5,7 @@ import type { ClientRepository, ClientRow } from "../types.js";
 import { logDebug } from "../../logger.js";
 
 export class PostgresClientRepository implements ClientRepository {
-  private getClient(): SqlClient {
+  private sql(): SqlClient {
     return getPostgresClient();
   }
 
@@ -33,7 +33,7 @@ export class PostgresClientRepository implements ClientRepository {
     id: string,
     metadata: Record<string, unknown>
   ): Promise<{ firstTime: boolean; previousLastSeen: number | null; row: ClientRow }> {
-    const sql = this.getClient();
+    const sql = this.sql();
 
     // Check if client exists first to detect first-time vs returning
     const existing = await sql`SELECT * FROM clients WHERE id = ${id}`;
@@ -41,17 +41,17 @@ export class PostgresClientRepository implements ClientRepository {
     let previousLastSeen: number | null = null;
 
     if (existing.length > 0) {
-      previousLastSeen = new Date(existing[0].last_seen).getTime();
+      previousLastSeen = new Date(existing[0]!.last_seen).getTime();
     } else {
       firstTime = true;
     }
 
     const rows = await sql`
       INSERT INTO clients (id, nickname, first_seen, last_seen, client_metadata, created_at, updated_at)
-      VALUES (${id}, NULL, now(), now(), ${metadata}, now(), now())
+      VALUES (${id}, NULL, now(), now(), ${sql.json(metadata)}, now(), now())
       ON CONFLICT (id) DO UPDATE SET
         last_seen = now(),
-        client_metadata = ${metadata},
+        client_metadata = ${sql.json(metadata)},
         updated_at = now()
       RETURNING *
     `;
@@ -59,24 +59,24 @@ export class PostgresClientRepository implements ClientRepository {
     return {
       firstTime,
       previousLastSeen,
-      row: this.mapRow(rows[0]),
+      row: this.mapRow(rows[0]!),
     };
   }
 
   async setNickname(id: string, nickname: string): Promise<ClientRow | null> {
-    const sql = this.getClient();
+    const sql = this.sql();
     const rows = await sql`
       UPDATE clients SET nickname = ${nickname}, updated_at = now()
       WHERE id = ${id}
       RETURNING *
     `;
-    return rows.length > 0 ? this.mapRow(rows[0]) : null;
+    return rows.length > 0 ? this.mapRow(rows[0]!) : null;
   }
 
   async getClient(id: string): Promise<ClientRow | null> {
-    const sql = this.getClient();
+    const sql = this.sql();
     const rows = await sql`SELECT * FROM clients WHERE id = ${id}`;
-    return rows.length > 0 ? this.mapRow(rows[0]) : null;
+    return rows.length > 0 ? this.mapRow(rows[0]!) : null;
   }
 
   async getClientStats(id: string): Promise<{
@@ -85,7 +85,7 @@ export class PostgresClientRepository implements ClientRepository {
     memoriesToday: number;
     totalPrompts: number;
   }> {
-    const sql = this.getClient();
+    const sql = this.sql();
     const clientRow = await this.getClient(id);
 
     const memResult = await sql`SELECT COUNT(*) as count FROM memories`;

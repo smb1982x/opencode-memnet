@@ -456,7 +456,7 @@ class PostgresClientRepositoryLazy implements ClientRepository {
           throw err;
         });
     }
-    return this.target;
+    return this.target!;
   }
 
   async initialize(): Promise<void> {
