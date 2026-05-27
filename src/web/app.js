@@ -371,7 +371,7 @@ function updatePagination() {
 
 function updateSectionTitle() {
   const title = state.isSearching
-    ? `└─ SEARCH RESULTS (${state.totalItems}) ──`
+    ? `SEARCH RESULTS (${state.totalItems})`
     : t("section-project", { count: state.totalItems });
   document.getElementById("section-title").textContent = title;
 }
@@ -663,13 +663,6 @@ function showToast(message, type = "success") {
 function showError(message) {
   const container = document.getElementById("memories-list");
   container.innerHTML = `<div class="error-state">Error: ${escapeHtml(message)}</div>`;
-  // If profile tab is active, also show in profile-content so error is visible
-  if (state.currentView === "profile") {
-    const profileContainer = document.getElementById("profile-content");
-    if (profileContainer) {
-      profileContainer.innerHTML = `<div class="error-state">Error: ${escapeHtml(message)}</div>`;
-    }
-  }
 }
 
 function showRefreshIndicator(show) {
@@ -1074,25 +1067,14 @@ async function refreshProfile() {
   }
 }
 
-function switchView(view) {
-  state.currentView = view;
+// ── Profile sheet ──
+function openProfileSheet() {
+  document.getElementById("profile-sheet").classList.add("sheet-open");
+  loadUserProfile();
+}
 
-  document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.remove("active"));
-
-  if (view === "project") {
-    document.getElementById("tab-project").classList.add("active");
-    document.getElementById("project-section").classList.remove("hidden");
-    document.getElementById("profile-section").classList.add("hidden");
-    document.querySelector(".controls").classList.remove("hidden");
-    document.querySelector(".add-section").classList.remove("hidden");
-  } else if (view === "profile") {
-    document.getElementById("tab-profile").classList.add("active");
-    document.getElementById("project-section").classList.add("hidden");
-    document.getElementById("profile-section").classList.remove("hidden");
-    document.querySelector(".controls").classList.add("hidden");
-    document.querySelector(".add-section").classList.add("hidden");
-    loadUserProfile();
-  }
+function closeProfileSheet() {
+  document.getElementById("profile-sheet").classList.remove("sheet-open");
 }
 
 function escapeHtml(text) {
@@ -1111,8 +1093,12 @@ function escapeAttr(text) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  document.getElementById("tab-project").addEventListener("click", () => switchView("project"));
-  document.getElementById("tab-profile").addEventListener("click", () => switchView("profile"));
+  // ── Profile sheet ──
+  document.getElementById("profile-btn").addEventListener("click", openProfileSheet);
+  document.getElementById("profile-sheet-close").addEventListener("click", closeProfileSheet);
+  document.getElementById("profile-sheet").addEventListener("click", (e) => {
+    if (e.target.id === "profile-sheet") closeProfileSheet();
+  });
   document.getElementById("refresh-profile-btn")?.addEventListener("click", refreshProfile);
 
   document.getElementById("changelog-close")?.addEventListener("click", () => {
@@ -1241,11 +1227,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("memories-list").innerHTML =
       '<div class="loading">Switching profile...</div>';
     document.getElementById("stats-total").textContent = "Total: 0";
-    document.getElementById("section-title").textContent = "└─ PROJECT MEMORIES (0) ──";
+    document.getElementById("section-title").textContent = "PROJECT MEMORIES (0)";
 
     loadMemories();
     loadStats();
-    if (state.currentView === "profile") loadUserProfile();
   });
   document.getElementById("settings-save").addEventListener("click", async () => {
     if (!state.authDisabled) {
@@ -1268,6 +1253,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       document.getElementById("settings-panel").classList.add("hidden");
+      closeProfileSheet();
     }
   });
 

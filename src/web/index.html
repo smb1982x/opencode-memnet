@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenCode Memory Explorer</title>
     <link rel="stylesheet" href="/styles.css" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <script src="https://unpkg.com/lucide@latest" crossorigin="anonymous"></script>
     <script
       src="https://cdn.jsdelivr.net/npm/marked@17.0.1/lib/marked.umd.min.js"
@@ -23,31 +23,28 @@
   </head>
   <body>
     <div class="container">
+      <div class="banner">
+        <img src="/logo-banner.svg" alt="opencode MEMnet" />
+      </div>
+
       <header class="header">
-        <div class="header-top">
-          <h1 class="title" data-i18n="title">░▒▓▌ /opencode MEMnet/ ▐▓▒░</h1>
-          <button id="settings-toggle" class="settings-toggle" title="Settings">
+        <div class="header-left">
+          <div class="stats-bar">
+            <span id="stats-total">Total: 0</span>
+            <span id="refresh-indicator" class="hidden"
+              ><i data-lucide="rotate-cw" class="icon icon-spin"></i
+            ></span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button id="profile-btn" class="icon-btn" title="User Profile">
+            <i data-lucide="user-circle" class="icon"></i>
+          </button>
+          <button id="settings-toggle" class="icon-btn" title="Settings">
             <i data-lucide="settings" class="icon"></i>
           </button>
         </div>
-        <div class="stats-bar">
-          <span id="stats-total">Total: 0</span>
-          <span id="refresh-indicator" class="hidden"
-            ><i data-lucide="rotate-cw" class="icon icon-spin"></i
-          ></span>
-        </div>
       </header>
-
-      <div class="scope-tabs">
-        <button id="tab-project" class="tab-btn active" data-i18n="tab-project">
-          <i data-lucide="folder" class="icon"></i>
-          PROJECT MEMORIES
-        </button>
-        <button id="tab-profile" class="tab-btn" data-i18n="tab-profile">
-          <i data-lucide="user" class="icon"></i>
-          USER PROFILE
-        </button>
-      </div>
 
       <div class="controls">
         <div class="filter-group">
@@ -123,7 +120,7 @@
 
       <div class="memories-section" id="project-section">
         <div class="section-header">
-          <h2 id="section-title" data-i18n="section-project">└─ PROJECT MEMORIES (0) ──</h2>
+          <h2 id="section-title" data-i18n="section-project">PROJECT MEMORIES (0)</h2>
           <div class="pagination" id="pagination-top">
             <button id="prev-page-top" disabled>
               <i data-lucide="chevron-left" class="icon"></i>
@@ -150,21 +147,8 @@
         </div>
       </div>
 
-      <div class="profile-section hidden" id="profile-section">
-        <div class="section-header">
-          <h2 data-i18n="section-profile">└─ USER PROFILE ──</h2>
-          <button id="refresh-profile-btn" class="btn-secondary" data-i18n="btn-refresh">
-            <i data-lucide="refresh-cw" class="icon"></i> Refresh
-          </button>
-        </div>
-
-        <div id="profile-content" class="profile-content">
-          <div class="loading" data-i18n="loading-profile">Loading profile...</div>
-        </div>
-      </div>
-
       <div class="add-section">
-        <h2 data-i18n="section-add">└─ ADD NEW MEMORY ──</h2>
+        <h2 data-i18n="section-add">ADD NEW MEMORY</h2>
         <form id="add-form">
           <div class="form-row">
             <div class="form-group">
@@ -219,6 +203,7 @@
       </div>
     </div>
 
+    <!-- Edit Modal -->
     <div id="edit-modal" class="modal hidden">
       <div class="modal-content">
         <div class="modal-header">
@@ -243,8 +228,10 @@
       </div>
     </div>
 
+    <!-- Toast -->
     <div id="toast" class="toast hidden"></div>
 
+    <!-- Changelog Modal -->
     <div id="changelog-modal" class="modal hidden">
       <div class="modal-content">
         <div class="modal-header">
@@ -259,6 +246,7 @@
       </div>
     </div>
 
+    <!-- Settings Panel -->
     <div id="settings-panel" class="settings-panel hidden">
       <div class="settings-panel-content">
         <h3 data-i18n="settings-title">API Settings</h3>
@@ -284,6 +272,28 @@
         <p class="settings-note" data-i18n="settings-note">
           API key is stored in browser localStorage.
         </p>
+      </div>
+    </div>
+
+    <!-- Profile Sheet (right-side slide-in) -->
+    <div id="profile-sheet" class="sheet-overlay">
+      <div class="sheet-panel">
+        <div class="sheet-header">
+          <h3 data-i18n="section-profile">USER PROFILE</h3>
+          <button id="profile-sheet-close" class="icon-btn">
+            <i data-lucide="x" class="icon"></i>
+          </button>
+        </div>
+        <div class="sheet-body">
+          <div style="margin-bottom: 12px; text-align: right">
+            <button id="refresh-profile-btn" class="btn-secondary" data-i18n="btn-refresh">
+              <i data-lucide="refresh-cw" class="icon"></i> Refresh
+            </button>
+          </div>
+          <div id="profile-content" class="profile-content">
+            <div class="loading" data-i18n="loading-profile">Loading profile...</div>
+          </div>
+        </div>
       </div>
     </div>
 
