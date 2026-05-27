@@ -379,6 +379,8 @@ These must be set before the server will start.
 | `WEB_SERVER_ALLOWED_ORIGIN` | `*`         | CORS allowed origin                                                                                           |
 | `DISABLE_WEBUI_AUTH`        | `false`     | Disable API key auth for WebUI. **WARNING:** Secure the server by other means (reverse proxy, firewall, etc.) |
 | `DISABLE_CLIENT_AUTH`       | `false`     | Disable API key auth for client plugin. **WARNING:** Secure the server by other means                         |
+| `LOG_LEVEL`                 | `info`      | Console log level: `debug`, `info`, `warn`, `error`. File logs are always verbose                             |
+| `DEBUG`                     | `false`     | Shortcut for `LOG_LEVEL=debug`. Set to `true` or `1` for verbose console output                               |
 
 #### Advanced Variables
 
@@ -464,6 +466,9 @@ Full configuration with defaults:
   "memory": {
     "defaultScope": "project", // "project" or "all-projects"
   },
+
+  // Logging (optional)
+  "logLevel": "info", // "debug", "info", "warn", "error"
 }
 ```
 
@@ -480,6 +485,7 @@ Full configuration with defaults:
 | `chatMessage.maxAgeDays`            | --                      | Max age in days for context memories           |
 | `chatMessage.injectOn`              | `"first"`               | When to inject: `"first"` or `"always"`        |
 | `memory.defaultScope`               | `"project"`             | Default scope: `"project"` or `"all-projects"` |
+| `logLevel`                          | `info`                  | Log level: `debug`, `info`, `warn`, `error`    |
 
 ---
 
@@ -703,6 +709,28 @@ docker compose build --no-cache
 ```
 
 If Bun install fails, check your network connection and any proxy settings.
+
+### Enable debug logging
+
+For more visibility into server or plugin operations:
+
+**Server** — set in `.env` or Docker environment:
+
+```bash
+LOG_LEVEL=debug
+# or shorthand:
+DEBUG=true
+```
+
+**Plugin** — add to `opencode-memnet.jsonc`:
+
+```jsonc
+{
+  "logLevel": "debug",
+}
+```
+
+Debug output includes hook invocations, tool calls, context injection details, and error stack traces. File logs (`~/.opencode-memnet/opencode-memnet.log`) always capture all levels regardless of the console setting.
 
 ### Memories are not being created
 
