@@ -345,6 +345,28 @@ export const migrations: Migration[] = [
       `;
     },
   },
+
+  // ── 12: clients table for client identity tracking ──
+  {
+    version: 12,
+    description: "Create clients table for client identity tracking",
+    transactional: true,
+    up: async (sql) => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS clients (
+          id TEXT PRIMARY KEY,
+          nickname TEXT,
+          first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+          last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+          client_metadata JSONB NOT NULL DEFAULT '{}',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS idx_clients_last_seen ON clients (last_seen)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_clients_nickname ON clients (nickname) WHERE nickname IS NOT NULL`;
+    },
+  },
 ];
 
 // ── Runner ──
