@@ -41,6 +41,7 @@ services:
       # ── Logging ──
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DEBUG: ${DEBUG:-false}
+      CLIENT_WELCOME_BACK_THRESHOLD: ${CLIENT_WELCOME_BACK_THRESHOLD:-7d}
       # ── Database ──
       POSTGRES_URL: ${POSTGRES_URL:-postgresql://${POSTGRES_USER:-opencode}:${POSTGRES_PASSWORD:-opencode}@db:5432/${POSTGRES_DB:-opencode_mem}}
       POSTGRES_SSL: ${POSTGRES_SSL:-false}

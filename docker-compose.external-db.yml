@@ -41,6 +41,7 @@ services:
       # ── Logging ──
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DEBUG: ${DEBUG:-false}
+      CLIENT_WELCOME_BACK_THRESHOLD: ${CLIENT_WELCOME_BACK_THRESHOLD:-7d}
       # ── Database ──
       POSTGRES_URL: ${POSTGRES_URL:?POSTGRES_URL is required — set this to your external database}
       POSTGRES_SSL: ${POSTGRES_SSL:-require}
