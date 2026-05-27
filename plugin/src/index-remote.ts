@@ -3,7 +3,8 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import type { Part } from "@opencode-ai/sdk";
 import { tool } from "@opencode-ai/plugin";
 
-import { remoteMemoryClient } from "./services/remote-client.js";
+import { getRemoteClient } from "./services/remote-client.js";
+import { getClientId, getClientMetadata } from "./client-identity.js";
 import { getTags, type TagsConfig } from "../../shared/tags.js";
 import { stripPrivateContent, isFullyPrivate } from "../../shared/privacy.js";
 
@@ -27,10 +28,64 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
   }
 
   const tags = await getTags(directory, TAGS_CONFIG);
-  logInfo("Plugin initialized", {
-    project: tags.project.projectName || tags.project.tag,
-    user: tags.user.userEmail || "unknown",
-  });
+  const clientId = getClientId();
+  const client = getRemoteClient(clientId);
+
+  // Connect to server — registers client and gets connection info
+  let connectionInfo: Awaited<ReturnType<typeof client.clientConnect>>["data"] | null = null;
+  try {
+    const connectResult = await client.clientConnect(clientId, getClientMetadata());
+    if (connectResult.success && connectResult.data) {
+      connectionInfo = connectResult.data;
+      logInfo("Plugin initialized", {
+        project: tags.project.projectName || tags.project.tag,
+        user: tags.user.userEmail || "unknown",
+        clientId: clientId.slice(0, 8),
+        firstTime: connectionInfo.firstTime,
+        nickname: connectionInfo.nickname,
+      });
+
+      // Show welcome toast
+      const displayName = connectionInfo.nickname || clientId.slice(0, 8);
+      if (connectionInfo.firstTime) {
+        ctx.client?.tui
+          .showToast({
+            body: {
+              title: "Welcome to opencode-memnet!",
+              message: `New client registered: ${displayName}`,
+              variant: "info",
+              duration: 4000,
+            },
+          })
+          .catch(() => {});
+      } else if (connectionInfo.welcomeBack && connectionInfo.stats) {
+        const days = connectionInfo.daysSinceLastSeen;
+        ctx.client?.tui
+          .showToast({
+            body: {
+              title: `Welcome back, ${displayName}!`,
+              message: `Last seen ${days}d ago | ${connectionInfo.stats.totalMemories} memories (${connectionInfo.stats.memoriesToday} today)`,
+              variant: "info",
+              duration: 5000,
+            },
+          })
+          .catch(() => {});
+      } else if (connectionInfo.stats) {
+        ctx.client?.tui
+          .showToast({
+            body: {
+              title: `Welcome back, ${displayName}`,
+              message: `${connectionInfo.stats.totalMemories} memories | ${connectionInfo.stats.memoriesToday} new today`,
+              variant: "success",
+              duration: 3000,
+            },
+          })
+          .catch(() => {});
+      }
+    }
+  } catch (err) {
+    logWarn("Failed to connect to server on init", { error: String(err) });
+  }
   let idleTimeout: Timer | null = null;
   let captureInProgress = false;
 
@@ -53,7 +108,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
         const userMessage = textParts.map((p) => p.text).join("\n");
         if (!userMessage.trim()) return;
 
-        const ctxResult = await remoteMemoryClient.getContext({
+        const ctxResult = await client.getContext({
           sessionID: input.sessionID,
           projectTag: tags.project.tag,
           userId: tags.user.userEmail || undefined,
@@ -142,7 +197,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
                 const parsedTags = args.tags
                   ? args.tags.split(",").map((t) => t.trim().toLowerCase())
                   : undefined;
-                const result = await remoteMemoryClient.addMemory(sanitized, tags.project.tag, {
+                const result = await client.addMemory(sanitized, tags.project.tag, {
                   type: args.type as any,
                   tags: parsedTags,
                   displayName: tags.project.displayName,
@@ -161,7 +216,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
 
               case "search": {
                 if (!args.query) return JSON.stringify({ success: false, error: "query required" });
-                const res = await remoteMemoryClient.searchMemories(
+                const res = await client.searchMemories(
                   args.query,
                   tags.project.tag,
                   args.scope ?? CLIENT_CONFIG.memory.defaultScope
@@ -179,14 +234,14 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
               }
 
               case "profile": {
-                const profileRes = await remoteMemoryClient.getUserProfile(
+                const profileRes = await client.getUserProfile(
                   tags.user.userEmail || undefined
                 );
                 return JSON.stringify({ success: true, profile: profileRes.data ?? null });
               }
 
               case "list": {
-                const res = await remoteMemoryClient.listMemories(
+                const res = await client.listMemories(
                   tags.project.tag,
                   args.limit || 20,
                   args.scope ?? CLIENT_CONFIG.memory.defaultScope
@@ -205,7 +260,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
               case "forget": {
                 if (!args.memoryId)
                   return JSON.stringify({ success: false, error: "memoryId required" });
-                const res = await remoteMemoryClient.deleteMemory(args.memoryId);
+                const res = await client.deleteMemory(args.memoryId);
                 return JSON.stringify({ success: res.success, message: "Memory removed" });
               }
 
@@ -246,7 +301,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
               .map((p: any) => p.text)
               .join("\n");
 
-            const result = await remoteMemoryClient.autoCapture({
+            const result = await client.autoCapture({
               sessionID,
               projectTag: tags.project.tag,
               projectMetadata: {
@@ -299,7 +354,7 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
           projectTag: tags.project.tag 
         });
         try {
-          const memoriesResult = await remoteMemoryClient.searchMemoriesBySessionID(
+          const memoriesResult = await client.searchMemoriesBySessionID(
             sessionID,
             tags.project.tag,
             10
