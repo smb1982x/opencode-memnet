@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { log } from "./logger.js";
+import { log, logDebug, logError } from "./logger.js";
 import { AuthMiddleware } from "./auth.js";
 import {
   handleListTags,
@@ -138,6 +138,12 @@ export class WebServer {
     const path = url.pathname;
     const method = req.method;
 
+    // Log every API request at debug level (verbose)
+    if (path.startsWith("/api/")) {
+      const qs = url.search ? `?${url.searchParams.toString()}` : "";
+      logDebug(`← ${method} ${path}${qs}`, { method, path, query: Object.fromEntries(url.searchParams) });
+    }
+
     // CORS preflight (no auth required)
     if (method === "OPTIONS") {
       const headers = new Headers();
@@ -157,7 +163,10 @@ export class WebServer {
       }
     }
 
+    const startTime = performance.now();
+
     try {
+
       if (path === "/" || path === "/index.html") {
         return this.serveStaticFile("index.html", "text/html");
       }
@@ -409,7 +418,8 @@ export class WebServer {
 
       return new Response("Not Found", { status: 404 });
     } catch (error) {
-      log("handleRequest: unhandled error", { error: String(error) });
+      const elapsed = Math.round(performance.now() - startTime);
+      logError(`✗ ${method} ${path} ${elapsed}ms error`, { error: String(error), elapsed });
       return this.jsonResponse(
         {
           success: false,

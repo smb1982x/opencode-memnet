@@ -40,6 +40,9 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
       logDebug("chat.message hook fired", {
         sessionId: input.sessionID,
         partsCount: output.parts.length,
+        partTypes: output.parts.map((p: any) => p.type),
+        enabled: CLIENT_CONFIG.chatMessage.enabled,
+        maxMemories: CLIENT_CONFIG.chatMessage.maxMemories,
       });
 
       try {
@@ -71,7 +74,9 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
           output.parts.unshift(contextPart);
           logDebug("Memory context injected", {
             sessionId: input.sessionID,
-            hasContext: !!(ctxResult.success && ctxResult.data?.context),
+            contextLength: ctxResult.data.context?.length,
+            memoriesCount: ctxResult.data.memories?.length,
+            profileInjected: ctxResult.data.profileInjected,
           });
         }
       } catch (error) {
@@ -96,7 +101,13 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
           if (!isClientConfigured()) {
             return JSON.stringify({ success: false, error: "Memory system not configured." });
           }
-          logDebug("memory tool called", { mode: args.mode || "help" });
+          logDebug("memory tool called", { 
+            mode: args.mode || "help", 
+            hasContent: !!args.content, 
+            hasQuery: !!args.query,
+            scope: args.scope,
+            limit: args.limit,
+          });
 
           const mode = args.mode || "help";
 
@@ -210,11 +221,13 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
 
     event: async (input: { event: { type: string; properties?: any } }) => {
       const event = input.event;
+      logDebug(`event received`, { type: event.type, hasProperties: !!event.properties });
 
       if (event.type === "session.idle") {
         if (!isClientConfigured() || !CLIENT_CONFIG.autoCaptureEnabled) return;
         const sessionID = event.properties?.sessionID;
         if (!sessionID) return;
+        logDebug("session.idle event", { sessionId: sessionID, autoCaptureEnabled: CLIENT_CONFIG.autoCaptureEnabled });
 
         if (idleTimeout) clearTimeout(idleTimeout);
         if (captureInProgress) return;
@@ -263,10 +276,11 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
                 })
                 .catch(() => {});
               logDebug("Auto-capture completed", {
-                sessionId: sessionID,
-                success: result.success,
-                captured: result.data?.captured,
-              });
+                 sessionId: sessionID,
+                 success: result.success,
+                 captured: result.data?.captured,
+                 memoryId: result.data?.memoryId,
+               });
             }
           } catch (error) {
             logError("Idle auto-capture error", { error: String(error) });
@@ -280,7 +294,10 @@ export const OpenCodeMemPlugin: Plugin = async (ctx: PluginInput) => {
       if (event.type === "session.compacted") {
         const sessionID = event.properties?.sessionID;
         if (!sessionID) return;
-        logDebug("session.compacted event", { sessionId: sessionID });
+        logDebug("session.compacted event", { 
+          sessionId: sessionID, 
+          projectTag: tags.project.tag 
+        });
         try {
           const memoriesResult = await remoteMemoryClient.searchMemoriesBySessionID(
             sessionID,
