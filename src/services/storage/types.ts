@@ -340,7 +340,7 @@ export interface ClientRow {
 export interface ClientRepository {
   initialize(): Promise<void>;
   close(): Promise<void>;
-  upsertClient(id: string, metadata: Record<string, unknown>): Promise<{ firstTime: boolean; previousLastSeen: number | null; row: ClientRow }>;
+  upsertClient(id: string, metadata: Record<string, any>): Promise<{ firstTime: boolean; previousLastSeen: number | null; row: ClientRow }>;
   setNickname(id: string, nickname: string): Promise<ClientRow | null>;
   getClient(id: string): Promise<ClientRow | null>;
   getClientStats(id: string): Promise<{

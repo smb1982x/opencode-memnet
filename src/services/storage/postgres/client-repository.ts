@@ -31,7 +31,7 @@ export class PostgresClientRepository implements ClientRepository {
 
   async upsertClient(
     id: string,
-    metadata: Record<string, unknown>
+    metadata: Record<string, any>
   ): Promise<{ firstTime: boolean; previousLastSeen: number | null; row: ClientRow }> {
     const sql = this.sql();
 
