@@ -13,13 +13,15 @@ interface ApiResponse<T = any> {
 export class RemoteMemoryClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
+  private readonly clientId: string;
   private readonly timeout: number;
 
-  constructor(baseUrl: string, apiKey: string, timeout?: number) {
+  constructor(baseUrl: string, apiKey: string, clientId: string, timeout?: number) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
+    this.clientId = clientId;
     this.timeout = timeout ?? DEFAULT_TIMEOUT;
-    logDebug(`RemoteMemoryClient created`, { baseUrl: this.baseUrl, timeout: this.timeout, hasApiKey: !!this.apiKey });
+    logDebug(`RemoteMemoryClient created`, { baseUrl: this.baseUrl, timeout: this.timeout, hasApiKey: !!this.apiKey, clientId: this.clientId });
   }
 
   private async request<T>(
@@ -52,6 +54,7 @@ export class RemoteMemoryClient {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
+          "X-Client-ID": this.clientId,
         },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
@@ -244,15 +247,53 @@ export class RemoteMemoryClient {
     if (userId) query.userId = userId;
     return this.request("GET", "/api/user-profile", undefined, query);
   }
+
+  // ─── Client Identity ──────────────────────────────────
+
+  async clientConnect(
+    clientId: string,
+    metadata: Record<string, unknown>
+  ): Promise<
+    ApiResponse<{
+      firstTime: boolean;
+      daysSinceLastSeen: number | null;
+      nickname: string | null;
+      welcomeBack: boolean;
+      stats: { totalMemories: number; memoriesToday: number; totalPrompts: number } | null;
+    }>
+  > {
+    return this.request("POST", "/api/client/connect", { clientId, metadata });
+  }
+
+  async setClientNickname(
+    clientId: string,
+    nickname: string
+  ): Promise<ApiResponse<{ nickname: string }>> {
+    return this.request("PUT", "/api/client/nickname", { clientId, nickname });
+  }
+
+  async getClientStats(
+    clientId: string
+  ): Promise<
+    ApiResponse<{
+      nickname: string | null;
+      firstSeen: number;
+      lastSeen: number;
+      totalMemories: number;
+      memoriesToday: number;
+      totalPrompts: number;
+    }>
+  > {
+    return this.request("GET", `/api/client/stats`, undefined, { clientId });
+  }
 }
 
 // Module-level singleton
 let _client: RemoteMemoryClient | null = null;
 
-export function getRemoteClient(): RemoteMemoryClient {
+export function getRemoteClient(clientId?: string): RemoteMemoryClient {
   if (_client) return _client;
-  _client = new RemoteMemoryClient(CLIENT_CONFIG.serverUrl, CLIENT_CONFIG.apiKey);
+  if (!clientId) throw new Error("clientId required for first RemoteMemoryClient initialization");
+  _client = new RemoteMemoryClient(CLIENT_CONFIG.serverUrl, CLIENT_CONFIG.apiKey, clientId);
   return _client;
 }
-
-export const remoteMemoryClient = getRemoteClient();
