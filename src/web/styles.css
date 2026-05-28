@@ -483,7 +483,7 @@ button:disabled {
   padding: 14px;
   transition: border-color 0.2s;
   position: relative;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .memory-card:hover {
@@ -600,7 +600,7 @@ button:disabled {
 .memory-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 8px;
   flex-wrap: wrap;
   gap: 8px;
@@ -733,9 +733,11 @@ button:disabled {
 
 .memory-actions button,
 .prompt-actions button {
-  padding: 0 8px;
+  padding: 4px 8px;
   font-size: 9px;
   min-width: 28px;
+  height: auto;
+  min-height: 28px;
 }
 
 .btn-edit {
@@ -762,8 +764,10 @@ button:disabled {
   border-color: var(--primary-glow);
   color: var(--primary-glow);
   font-size: 13px;
-  padding: 0 6px;
+  padding: 4px 6px;
   min-width: 28px;
+  height: auto;
+  min-height: 28px;
 }
 
 .btn-pin:hover {
