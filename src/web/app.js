@@ -16,6 +16,7 @@ const state = {
   userProfile: null,
   authKey: localStorage.getItem("opencode-memnet-apikey") || "",
   activeProfileId: localStorage.getItem("opencode-memnet-active-profile") || "",
+  panelViewUserId: "",
   authDisabled: false,
 };
 
@@ -828,8 +829,9 @@ async function runMigration(strategy) {
 }
 
 async function loadUserProfile() {
-  const endpoint = state.activeProfileId
-    ? `/api/user-profile?userId=${encodeURIComponent(state.activeProfileId)}`
+  const viewUserId = state.panelViewUserId || state.activeProfileId;
+  const endpoint = viewUserId
+    ? `/api/user-profile?userId=${encodeURIComponent(viewUserId)}`
     : "/api/user-profile";
   const result = await fetchAPI(endpoint);
   if (result.success) {
@@ -1070,7 +1072,68 @@ async function refreshProfile() {
 // ── Profile sheet ──
 function openProfileSheet() {
   document.getElementById("profile-sheet").classList.add("sheet-open");
-  loadUserProfile();
+  if (state.authDisabled) {
+    loadProfilePanelSelector();
+  } else {
+    document.getElementById("profile-selector-row").style.display = "none";
+    state.panelViewUserId = state.activeProfileId;
+    loadUserProfile();
+  }
+}
+
+async function loadProfilePanelSelector() {
+  const selectorRow = document.getElementById("profile-selector-row");
+  const select = document.getElementById("profile-panel-select");
+  selectorRow.style.display = "flex";
+
+  try {
+    const res = await fetch("/api/user-profiles");
+    const data = await res.json();
+
+    if (data.success && data.data.profiles && data.data.profiles.length > 0) {
+      select.innerHTML = "";
+      data.data.profiles.forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.userId;
+        opt.textContent = p.displayName + " (" + p.userEmail + ")";
+        select.appendChild(opt);
+      });
+
+      // Select the default or currently active profile
+      const defaultId = data.data.defaultUserId;
+      const targetId = state.activeProfileId || defaultId;
+      if (data.data.profiles.some((p) => p.userId === targetId)) {
+        select.value = targetId;
+      } else if (data.data.profiles.some((p) => p.userId === defaultId)) {
+        select.value = defaultId;
+      }
+
+      state.panelViewUserId = select.value;
+      loadUserProfile();
+    } else {
+      // No profiles available — show empty state
+      select.innerHTML = "";
+      select.disabled = true;
+      const container = document.getElementById("profile-content");
+      container.innerHTML = `
+        <div class="empty-state">
+          <i data-lucide="user-x" class="icon-large"></i>
+          <p>${t("profile-no-profiles")}</p>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+  } catch (e) {
+    console.warn("Failed to load profile selector:", e);
+    const container = document.getElementById("profile-content");
+    container.innerHTML = `
+      <div class="empty-state">
+        <i data-lucide="alert-circle" class="icon-large"></i>
+        <p>${t("profile-load-error")}</p>
+      </div>
+    `;
+    lucide.createIcons();
+  }
 }
 
 function closeProfileSheet() {
@@ -1100,6 +1163,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.target.id === "profile-sheet") closeProfileSheet();
   });
   document.getElementById("refresh-profile-btn")?.addEventListener("click", refreshProfile);
+  document.getElementById("profile-panel-select").addEventListener("change", (e) => {
+    state.panelViewUserId = e.target.value;
+    loadUserProfile();
+  });
 
   document.getElementById("changelog-close")?.addEventListener("click", () => {
     document.getElementById("changelog-modal").classList.add("hidden");
