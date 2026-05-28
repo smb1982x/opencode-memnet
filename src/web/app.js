@@ -578,6 +578,37 @@ function editMemory(id) {
   document.getElementById("edit-id").value = memory.id;
   document.getElementById("edit-content").value = memory.content;
 
+  // Pre-populate type
+  const editType = document.getElementById("edit-type");
+  editType.value = memory.memoryType || "";
+
+  // Pre-populate tags
+  const tagsValue = Array.isArray(memory.tags)
+    ? memory.tags.join(", ")
+    : (memory.tags || "");
+  document.getElementById("edit-tags").value = tagsValue;
+
+  // Pre-populate and populate project tag dropdown
+  const editTagSelect = document.getElementById("edit-tag");
+  editTagSelect.innerHTML = `<option value="">${t("opt-select-tag")}</option>`;
+  const scopeTags = state.tags.project || [];
+  scopeTags.forEach((tagInfo) => {
+    const displayText = tagInfo.displayName || tagInfo.tag;
+    const shortDisplay =
+      displayText.length > 50 ? displayText.substring(0, 50) + "..." : displayText;
+    const option = document.createElement("option");
+    option.value = tagInfo.tag;
+    option.textContent = shortDisplay;
+    editTagSelect.appendChild(option);
+  });
+  editTagSelect.value = memory.containerTag || "";
+
+  // Hide project tag dropdown when auth is enabled (not disabled)
+  const editTagGroup = editTagSelect.closest(".form-group");
+  if (editTagGroup) {
+    editTagGroup.style.display = state.authDisabled ? "" : "none";
+  }
+
   document.getElementById("edit-modal").classList.remove("hidden");
 }
 
@@ -586,16 +617,41 @@ async function saveEdit(e) {
 
   const id = document.getElementById("edit-id").value;
   const content = document.getElementById("edit-content").value.trim();
+  const type = document.getElementById("edit-type").value;
+  const tagsStr = document.getElementById("edit-tags").value.trim();
+  const tags = tagsStr
+    ? tagsStr
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t)
+    : [];
 
   if (!content) {
     showToast(t("toast-add-error"), "error");
     return;
   }
 
+  const body = { content };
+
+  if (type) {
+    body.type = type;
+  }
+  if (tags.length > 0) {
+    body.tags = tags;
+  }
+
+  // Only send containerTag when auth is disabled
+  if (state.authDisabled) {
+    const containerTag = document.getElementById("edit-tag").value;
+    if (containerTag) {
+      body.containerTag = containerTag;
+    }
+  }
+
   const result = await fetchAPI(`/api/memories/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (result.success) {

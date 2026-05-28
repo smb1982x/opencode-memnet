@@ -203,6 +203,7 @@ export async function handleListMemories(
       type: "memory" as const,
       id: r.id,
       content: r.content,
+      containerTag: r.containerTag,
       memoryType: r.type,
       tags: r.tags,
       createdAt: r.createdAt,
@@ -284,6 +285,7 @@ export async function handleListMemories(
           type: "memory",
           id: item.id,
           content: item.content,
+          containerTag: item.containerTag,
           memoryType: item.memoryType,
           tags: item.tags,
           createdAt: safeToISOString(item.createdAt),
@@ -431,7 +433,7 @@ export async function handleBulkDelete(
 
 export async function handleUpdateMemory(
   id: string,
-  data: { content?: string; type?: MemoryType; tags?: string[] }
+  data: { content?: string; type?: MemoryType; tags?: string[]; containerTag?: string }
 ): Promise<ApiResponse<void>> {
   try {
     await ensureInit();
@@ -465,7 +467,7 @@ export async function handleUpdateMemory(
       content: newContent,
       vector,
       tagsVector,
-      containerTag: existingMemory.containerTag,
+      containerTag: data.containerTag || existingMemory.containerTag,
       tags: tags.length > 0 ? tags.join(",") : undefined,
       type: data.type || existingMemory.type,
       createdAt: existingMemory.createdAt,
