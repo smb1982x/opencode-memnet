@@ -302,12 +302,12 @@ button:disabled {
 }
 
 .btn-maintenance {
-  border-color: var(--warning);
-  color: var(--warning);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .btn-maintenance:hover:not(:disabled) {
-  background: var(--warning);
+  background: var(--primary);
   color: var(--background);
 }
 
