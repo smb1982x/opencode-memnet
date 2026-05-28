@@ -294,7 +294,7 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/deduplicate" && method === "POST") {
-      const result = handleDeduplicate();
+      const result = await handleDeduplicate();
       return jsonResponse(result);
     }
 

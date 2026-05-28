@@ -730,7 +730,11 @@ async function runDeduplication() {
   const result = await fetchAPI("/api/deduplicate", { method: "POST" });
 
   if (result.success) {
-    showToast(t("toast-dedup-success"), "success");
+    const { totalChecked, duplicatesFound, duplicatesRemoved } = result.data || {};
+    const msg = duplicatesRemoved > 0
+      ? `${t("toast-dedup-success")} (${duplicatesRemoved} ${duplicatesRemoved === 1 ? "duplicate removed" : "duplicates removed"} out of ${totalChecked || 0} checked)`
+      : `${t("toast-dedup-success")} (no duplicates found among ${totalChecked || 0} memories)`;
+    showToast(msg, "success");
     await loadMemories();
     await loadStats();
   } else {
