@@ -285,6 +285,12 @@
           </button>
         </div>
         <div class="sheet-body">
+          <div id="profile-selector-row" class="profile-selector-row" style="display: none;">
+            <label for="profile-panel-select" data-i18n="profile-select-label">View profile:</label>
+            <select id="profile-panel-select">
+              <option value="" disabled selected data-i18n="settings-profile-loading">Select a profile...</option>
+            </select>
+          </div>
           <div style="margin-bottom: 12px; text-align: right">
             <button id="refresh-profile-btn" class="btn-secondary" data-i18n="btn-refresh">
               <i data-lucide="refresh-cw" class="icon"></i> Refresh

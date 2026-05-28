@@ -1155,6 +1155,33 @@ button:disabled {
 }
 
 /* ── Profile Content (inside sheet) ── */
+.profile-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.profile-selector-row label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.profile-selector-row select {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #333);
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-primary, #e0e0e0);
+  font-size: 0.85rem;
+}
+
 .profile-content {
   min-height: 200px;
 }
