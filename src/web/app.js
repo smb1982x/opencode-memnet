@@ -1268,6 +1268,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("settings-profile").disabled = false;
       // Auto-load profiles since we have access
       populateProfileDropdown();
+      // Hide settings cog — all panel settings (API key, profile) are auth-related
+      document.getElementById("settings-toggle").style.display = "none";
     }
   } catch (e) {
     console.warn("Auth check failed:", e);
