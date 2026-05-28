@@ -302,12 +302,12 @@ button:disabled {
 }
 
 .btn-maintenance {
-  border-color: var(--warning);
-  color: var(--warning);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .btn-maintenance:hover:not(:disabled) {
-  background: var(--warning);
+  background: var(--primary);
   color: var(--background);
 }
 
@@ -483,7 +483,7 @@ button:disabled {
   padding: 14px;
   transition: border-color 0.2s;
   position: relative;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .memory-card:hover {
@@ -600,7 +600,7 @@ button:disabled {
 .memory-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 8px;
   flex-wrap: wrap;
   gap: 8px;
@@ -733,9 +733,11 @@ button:disabled {
 
 .memory-actions button,
 .prompt-actions button {
-  padding: 0 8px;
+  padding: 4px 8px;
   font-size: 9px;
   min-width: 28px;
+  height: auto;
+  min-height: 28px;
 }
 
 .btn-edit {
@@ -762,8 +764,10 @@ button:disabled {
   border-color: var(--primary-glow);
   color: var(--primary-glow);
   font-size: 13px;
-  padding: 0 6px;
+  padding: 4px 6px;
   min-width: 28px;
+  height: auto;
+  min-height: 28px;
 }
 
 .btn-pin:hover {
@@ -1151,6 +1155,33 @@ button:disabled {
 }
 
 /* ── Profile Content (inside sheet) ── */
+.profile-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.profile-selector-row label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.profile-selector-row select {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #333);
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-primary, #e0e0e0);
+  font-size: 0.85rem;
+}
+
 .profile-content {
   min-height: 200px;
 }

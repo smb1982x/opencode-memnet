@@ -203,6 +203,7 @@ export async function handleListMemories(
       type: "memory" as const,
       id: r.id,
       content: r.content,
+      containerTag: r.containerTag,
       memoryType: r.type,
       tags: r.tags,
       createdAt: r.createdAt,
@@ -284,6 +285,7 @@ export async function handleListMemories(
           type: "memory",
           id: item.id,
           content: item.content,
+          containerTag: item.containerTag,
           memoryType: item.memoryType,
           tags: item.tags,
           createdAt: safeToISOString(item.createdAt),
@@ -431,7 +433,7 @@ export async function handleBulkDelete(
 
 export async function handleUpdateMemory(
   id: string,
-  data: { content?: string; type?: MemoryType; tags?: string[] }
+  data: { content?: string; type?: MemoryType; tags?: string[]; containerTag?: string }
 ): Promise<ApiResponse<void>> {
   try {
     await ensureInit();
@@ -465,7 +467,7 @@ export async function handleUpdateMemory(
       content: newContent,
       vector,
       tagsVector,
-      containerTag: existingMemory.containerTag,
+      containerTag: data.containerTag || existingMemory.containerTag,
       tags: tags.length > 0 ? tags.join(",") : undefined,
       type: data.type || existingMemory.type,
       createdAt: existingMemory.createdAt,
@@ -973,6 +975,9 @@ let _migrationRunning = false;
 // ── Cleanup guard (best-effort lock; same single-user/single-process model as migrationProgress) ──
 let _cleanupInProgress = false;
 
+// ── Deduplicate guard (prevents concurrent dedup operations) ──
+let _dedupInProgress = false;
+
 // Cached record list for the current migration run – avoids reloading
 // every memory (including vectors) on each batch call.
 let cachedMigrationRecords: MemoryRecord[] | null = null;
@@ -1442,8 +1447,169 @@ export async function handleCleanup(): Promise<
   }
 }
 
-export function handleDeduplicate(): ApiResponse {
-  return { success: false, error: "Deduplication not yet implemented" };
+export async function handleDeduplicate(): Promise<
+  ApiResponse<{
+    totalChecked: number;
+    groupsChecked: number;
+    duplicatesFound: number;
+    duplicatesRemoved: number;
+  }>
+> {
+  if (_dedupInProgress) {
+    return { success: false, error: "Deduplication is already in progress" };
+  }
+  _dedupInProgress = true;
+
+  try {
+    await ensureInit();
+
+    // Load all memories with embedding vectors.
+    // getAllWithVectors() is explicitly designed for pairwise similarity checks
+    // (see types.ts:143 comment).
+    const memories = await memoryRepo.getAllWithVectors();
+
+    if (memories.length === 0) {
+      return {
+        success: true,
+        data: {
+          totalChecked: 0,
+          groupsChecked: 0,
+          duplicatesFound: 0,
+          duplicatesRemoved: 0,
+        },
+      };
+    }
+
+    // ── Step 1: Group by containerTag to enforce profile/project boundaries ──
+    // containerTag encodes scope (user/project) and identity, so memories in
+    // different groups must NEVER be compared or merged.
+    const groups = new Map<string, MemoryRecord[]>();
+    for (const mem of memories) {
+      const key = mem.containerTag;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(mem);
+    }
+
+    // ── Step 2: Detect duplicate clusters within each group ──
+    // Algorithm:
+    //   • Compute pairwise cosine similarity on content embedding vectors.
+    //   • If similarity ≥ threshold (0.95), mark the pair as duplicates.
+    //   • Use union-find to build transitive closure (if A≈B and B≈C, all three
+    //     belong to the same duplicate cluster).
+    //   • Per cluster, keep the most-recently-updated memory and delete the rest.
+    //
+    // Threshold rationale: 0.95 cosine similarity on embedding vectors indicates
+    // near-identical semantic content.  This is conservative — only clearly
+    // redundant copies are removed.
+    const SIMILARITY_THRESHOLD = 0.95;
+
+    let totalChecked = 0;
+    let duplicatesFound = 0;
+    let duplicatesRemoved = 0;
+
+    for (const [, group] of groups) {
+      if (group.length < 2) continue;
+      totalChecked += group.length;
+
+      // Union-Find
+      const parent = new Int32Array(group.length);
+      for (let i = 0; i < group.length; i++) parent[i] = i;
+
+      const find = (x: number): number => {
+        while (parent[x]! !== x) {
+          parent[x] = parent[parent[x]!]!; // path compression
+          x = parent[x]!;
+        }
+        return x;
+      };
+
+      const union = (a: number, b: number): void => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent[ra] = rb!;
+      };
+
+      // Pairwise comparison within the group
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const sim = cosineSimilarity(group[i]!.vector, group[j]!.vector);
+          if (sim >= SIMILARITY_THRESHOLD) {
+            union(i, j);
+          }
+        }
+      }
+
+      // Collect clusters
+      const clusters = new Map<number, number[]>();
+      for (let i = 0; i < group.length; i++) {
+        const root = find(i);
+        if (!clusters.has(root)) clusters.set(root, []);
+        clusters.get(root)!.push(i);
+      }
+
+      // For each cluster with >1 member: keep most recent, delete the rest
+      for (const [, indices] of clusters) {
+        if (indices.length < 2) continue;
+        duplicatesFound += indices.length - 1;
+
+        // Sort descending by updatedAt — first item is kept
+        indices.sort((a, b) => group[b]!.updatedAt - group[a]!.updatedAt);
+
+        // Delete all except the most recently updated
+        for (let k = 1; k < indices.length; k++) {
+          try {
+            await memoryRepo.delete(group[indices[k]!]!.id);
+            duplicatesRemoved++;
+          } catch (e) {
+            log("handleDeduplicate: failed to delete duplicate", {
+              id: group[indices[k]!]!.id,
+              error: String(e),
+            });
+          }
+        }
+      }
+    }
+
+    log("handleDeduplicate: completed", {
+      totalChecked,
+      groupsChecked: groups.size,
+      duplicatesFound,
+      duplicatesRemoved,
+    });
+
+    return {
+      success: true,
+      data: {
+        totalChecked,
+        groupsChecked: groups.size,
+        duplicatesFound,
+        duplicatesRemoved,
+      },
+    };
+  } catch (error) {
+    logError("handleDeduplicate: error", { error: String(error) });
+    return { success: false, error: String(error) };
+  } finally {
+    _dedupInProgress = false;
+  }
+}
+
+/**
+ * Compute cosine similarity between two embedding vectors.
+ * Returns a value in [-1, 1], where 1 = identical direction.
+ */
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
 }
 
 export function handleMigrationRun(_body: {

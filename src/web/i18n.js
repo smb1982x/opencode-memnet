@@ -7,6 +7,7 @@ const translations = {
     "label-type": "Type:",
     "label-tags": "Tags:",
     "label-content": "Content:",
+    "label-project-tag": "Project:",
     "btn-cleanup": "Cleanup",
     "btn-deduplicate": "Deduplicate",
     "btn-delete-selected": "Delete Selected",
@@ -112,6 +113,9 @@ const translations = {
     "settings-note": "API key is stored in browser localStorage.",
     "settings-profile-label": "Profile:",
     "settings-profile-loading": "Enter API key first...",
+    "profile-select-label": "View profile:",
+    "profile-no-profiles": "No user profiles available yet. Profiles are created as you interact with the memory system.",
+    "profile-load-error": "Failed to load profiles. Please try again.",
   },
   zh: {
     title: " ░▒▓▌ OPENCODE MEMORY EXPLORER ▐▓▒░ ",
@@ -121,6 +125,7 @@ const translations = {
     "label-type": "类型:",
     "label-tags": "标签:",
     "label-content": "内容:",
+    "label-project-tag": "项目：",
     "btn-cleanup": "清理",
     "btn-deduplicate": "去重",
     "btn-delete-selected": "删除选中",
@@ -224,6 +229,9 @@ const translations = {
     "settings-note": "API 密钥存储在浏览器 localStorage 中。",
     "settings-profile-label": "用户:",
     "settings-profile-loading": "请先输入 API 密钥...",
+    "profile-select-label": "查看画像:",
+    "profile-no-profiles": "暂无用户画像。画像将在您与记忆系统交互时自动创建。",
+    "profile-load-error": "加载画像失败，请重试。",
   },
 };
 

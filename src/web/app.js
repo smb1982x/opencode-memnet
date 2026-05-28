@@ -16,6 +16,7 @@ const state = {
   userProfile: null,
   authKey: localStorage.getItem("opencode-memnet-apikey") || "",
   activeProfileId: localStorage.getItem("opencode-memnet-active-profile") || "",
+  panelViewUserId: "",
   authDisabled: false,
 };
 
@@ -577,6 +578,37 @@ function editMemory(id) {
   document.getElementById("edit-id").value = memory.id;
   document.getElementById("edit-content").value = memory.content;
 
+  // Pre-populate type
+  const editType = document.getElementById("edit-type");
+  editType.value = memory.memoryType || "";
+
+  // Pre-populate tags
+  const tagsValue = Array.isArray(memory.tags)
+    ? memory.tags.join(", ")
+    : (memory.tags || "");
+  document.getElementById("edit-tags").value = tagsValue;
+
+  // Pre-populate and populate project tag dropdown
+  const editTagSelect = document.getElementById("edit-tag");
+  editTagSelect.innerHTML = `<option value="">${t("opt-select-tag")}</option>`;
+  const scopeTags = state.tags.project || [];
+  scopeTags.forEach((tagInfo) => {
+    const displayText = tagInfo.displayName || tagInfo.tag;
+    const shortDisplay =
+      displayText.length > 50 ? displayText.substring(0, 50) + "..." : displayText;
+    const option = document.createElement("option");
+    option.value = tagInfo.tag;
+    option.textContent = shortDisplay;
+    editTagSelect.appendChild(option);
+  });
+  editTagSelect.value = memory.containerTag || "";
+
+  // Hide project tag dropdown when auth is enabled (not disabled)
+  const editTagGroup = editTagSelect.closest(".form-group");
+  if (editTagGroup) {
+    editTagGroup.style.display = state.authDisabled ? "" : "none";
+  }
+
   document.getElementById("edit-modal").classList.remove("hidden");
 }
 
@@ -585,16 +617,41 @@ async function saveEdit(e) {
 
   const id = document.getElementById("edit-id").value;
   const content = document.getElementById("edit-content").value.trim();
+  const type = document.getElementById("edit-type").value;
+  const tagsStr = document.getElementById("edit-tags").value.trim();
+  const tags = tagsStr
+    ? tagsStr
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t)
+    : [];
 
   if (!content) {
     showToast(t("toast-add-error"), "error");
     return;
   }
 
+  const body = { content };
+
+  if (type) {
+    body.type = type;
+  }
+  if (tags.length > 0) {
+    body.tags = tags;
+  }
+
+  // Only send containerTag when auth is disabled
+  if (state.authDisabled) {
+    const containerTag = document.getElementById("edit-tag").value;
+    if (containerTag) {
+      body.containerTag = containerTag;
+    }
+  }
+
   const result = await fetchAPI(`/api/memories/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (result.success) {
@@ -730,7 +787,11 @@ async function runDeduplication() {
   const result = await fetchAPI("/api/deduplicate", { method: "POST" });
 
   if (result.success) {
-    showToast(t("toast-dedup-success"), "success");
+    const { totalChecked, duplicatesFound, duplicatesRemoved } = result.data || {};
+    const msg = duplicatesRemoved > 0
+      ? `${t("toast-dedup-success")} (${duplicatesRemoved} ${duplicatesRemoved === 1 ? "duplicate removed" : "duplicates removed"} out of ${totalChecked || 0} checked)`
+      : `${t("toast-dedup-success")} (no duplicates found among ${totalChecked || 0} memories)`;
+    showToast(msg, "success");
     await loadMemories();
     await loadStats();
   } else {
@@ -828,8 +889,9 @@ async function runMigration(strategy) {
 }
 
 async function loadUserProfile() {
-  const endpoint = state.activeProfileId
-    ? `/api/user-profile?userId=${encodeURIComponent(state.activeProfileId)}`
+  const viewUserId = state.panelViewUserId || state.activeProfileId;
+  const endpoint = viewUserId
+    ? `/api/user-profile?userId=${encodeURIComponent(viewUserId)}`
     : "/api/user-profile";
   const result = await fetchAPI(endpoint);
   if (result.success) {
@@ -1070,7 +1132,68 @@ async function refreshProfile() {
 // ── Profile sheet ──
 function openProfileSheet() {
   document.getElementById("profile-sheet").classList.add("sheet-open");
-  loadUserProfile();
+  if (state.authDisabled) {
+    loadProfilePanelSelector();
+  } else {
+    document.getElementById("profile-selector-row").style.display = "none";
+    state.panelViewUserId = state.activeProfileId;
+    loadUserProfile();
+  }
+}
+
+async function loadProfilePanelSelector() {
+  const selectorRow = document.getElementById("profile-selector-row");
+  const select = document.getElementById("profile-panel-select");
+  selectorRow.style.display = "flex";
+
+  try {
+    const res = await fetch("/api/user-profiles");
+    const data = await res.json();
+
+    if (data.success && data.data.profiles && data.data.profiles.length > 0) {
+      select.innerHTML = "";
+      data.data.profiles.forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.userId;
+        opt.textContent = p.displayName + " (" + p.userEmail + ")";
+        select.appendChild(opt);
+      });
+
+      // Select the default or currently active profile
+      const defaultId = data.data.defaultUserId;
+      const targetId = state.activeProfileId || defaultId;
+      if (data.data.profiles.some((p) => p.userId === targetId)) {
+        select.value = targetId;
+      } else if (data.data.profiles.some((p) => p.userId === defaultId)) {
+        select.value = defaultId;
+      }
+
+      state.panelViewUserId = select.value;
+      loadUserProfile();
+    } else {
+      // No profiles available — show empty state
+      select.innerHTML = "";
+      select.disabled = true;
+      const container = document.getElementById("profile-content");
+      container.innerHTML = `
+        <div class="empty-state">
+          <i data-lucide="user-x" class="icon-large"></i>
+          <p>${t("profile-no-profiles")}</p>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+  } catch (e) {
+    console.warn("Failed to load profile selector:", e);
+    const container = document.getElementById("profile-content");
+    container.innerHTML = `
+      <div class="empty-state">
+        <i data-lucide="alert-circle" class="icon-large"></i>
+        <p>${t("profile-load-error")}</p>
+      </div>
+    `;
+    lucide.createIcons();
+  }
 }
 
 function closeProfileSheet() {
@@ -1100,6 +1223,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.target.id === "profile-sheet") closeProfileSheet();
   });
   document.getElementById("refresh-profile-btn")?.addEventListener("click", refreshProfile);
+  document.getElementById("profile-panel-select").addEventListener("change", (e) => {
+    state.panelViewUserId = e.target.value;
+    loadUserProfile();
+  });
 
   document.getElementById("changelog-close")?.addEventListener("click", () => {
     document.getElementById("changelog-modal").classList.add("hidden");
@@ -1268,6 +1395,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("settings-profile").disabled = false;
       // Auto-load profiles since we have access
       populateProfileDropdown();
+      // Hide settings cog — all panel settings (API key, profile) are auth-related
+      document.getElementById("settings-toggle").style.display = "none";
     }
   } catch (e) {
     console.warn("Auth check failed:", e);

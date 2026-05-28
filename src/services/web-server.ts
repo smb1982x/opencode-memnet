@@ -385,7 +385,7 @@ export class WebServer {
       }
 
       if (path === "/api/deduplicate" && method === "POST") {
-        const result = handleDeduplicate();
+        const result = await handleDeduplicate();
         return this.jsonResponse(result);
       }
 

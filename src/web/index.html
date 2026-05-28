@@ -212,6 +212,41 @@
         </div>
         <form id="edit-form">
           <input type="hidden" id="edit-id" />
+          <div class="form-row">
+            <div class="form-group">
+              <label data-i18n="label-project-tag">Project:</label>
+              <select id="edit-tag">
+                <option value="" data-i18n="opt-select-tag">Select tag</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label data-i18n="label-type">Type:</label>
+              <select id="edit-type">
+                <option value="" data-i18n="opt-other">other</option>
+                <option value="feature" data-i18n="opt-feature">feature</option>
+                <option value="bug-fix" data-i18n="opt-bug-fix">bug-fix</option>
+                <option value="refactor" data-i18n="opt-refactor">refactor</option>
+                <option value="architecture" data-i18n="opt-architecture">architecture</option>
+                <option value="rule" data-i18n="opt-rule">rule</option>
+                <option value="documentation" data-i18n="opt-documentation">documentation</option>
+                <option value="discussion" data-i18n="opt-discussion">discussion</option>
+                <option value="analysis" data-i18n="opt-analysis">analysis</option>
+                <option value="configuration" data-i18n="opt-configuration">configuration</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label data-i18n="label-tags">Tags:</label>
+              <input
+                type="text"
+                id="edit-tags"
+                data-i18n-placeholder="placeholder-tags"
+                placeholder="react, hooks, auth (comma separated)"
+              />
+            </div>
+          </div>
+
           <div class="form-group">
             <label data-i18n="label-content">Content:</label>
             <textarea id="edit-content" rows="6" required></textarea>
@@ -285,6 +320,12 @@
           </button>
         </div>
         <div class="sheet-body">
+          <div id="profile-selector-row" class="profile-selector-row" style="display: none;">
+            <label for="profile-panel-select" data-i18n="profile-select-label">View profile:</label>
+            <select id="profile-panel-select">
+              <option value="" disabled selected data-i18n="settings-profile-loading">Select a profile...</option>
+            </select>
+          </div>
           <div style="margin-bottom: 12px; text-align: right">
             <button id="refresh-profile-btn" class="btn-secondary" data-i18n="btn-refresh">
               <i data-lucide="refresh-cw" class="icon"></i> Refresh
