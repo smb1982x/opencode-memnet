@@ -338,7 +338,61 @@
       </div>
     </div>
 
-    <div id="migration-status-bar" class="migration-status-bar">Status: Idle</div>
+    <div id="job-status-bar" class="job-status-bar">
+      <span id="job-status-indicator" class="job-status-indicator"></span>
+      <span id="job-status-text" class="job-status-text" data-i18n="job-status-idle">Idle</span>
+      <button id="job-drawer-toggle" class="job-drawer-toggle" title="Job Details">
+        <i data-lucide="chevron-up" class="icon"></i>
+      </button>
+    </div>
+
+    <!-- Confirm Modal (replaces browser confirm() for cleanup/dedup) -->
+    <div id="confirm-modal" class="modal hidden">
+      <div class="modal-content confirm-modal-content">
+        <div class="modal-header">
+          <h3 id="confirm-modal-title"></h3>
+        </div>
+        <div class="confirm-modal-body">
+          <p id="confirm-modal-desc"></p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="confirm-modal-cancel"></button>
+          <button type="button" class="btn-primary btn-danger" id="confirm-modal-confirm"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Job Status Drawer (right-side slide-in) -->
+    <div id="job-drawer" class="sheet-overlay">
+      <div class="sheet-panel job-drawer-panel">
+        <div class="sheet-header">
+          <h3 data-i18n="drawer-title">Maintenance Jobs</h3>
+          <button id="job-drawer-close" class="icon-btn">
+            <i data-lucide="x" class="icon"></i>
+          </button>
+        </div>
+        <div class="sheet-body">
+          <div class="drawer-section">
+            <h4 data-i18n="drawer-section-current">CURRENT</h4>
+            <div id="drawer-current" class="drawer-current">
+              <div class="drawer-empty" data-i18n="job-status-idle">Idle</div>
+            </div>
+          </div>
+          <div class="drawer-section">
+            <h4 data-i18n="drawer-section-queued">QUEUED</h4>
+            <div id="drawer-queued" class="drawer-queued">
+              <div class="drawer-empty" data-i18n="drawer-no-queued">No queued jobs</div>
+            </div>
+          </div>
+          <div class="drawer-section">
+            <h4 data-i18n="drawer-section-history">HISTORY</h4>
+            <div id="drawer-history" class="drawer-history">
+              <div class="drawer-empty" data-i18n="drawer-no-history">No recent jobs</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="/app.js"></script>
   </body>

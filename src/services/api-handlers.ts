@@ -1381,7 +1381,7 @@ export function handleMigrationDetect(): ApiResponse<{ needsMigration: boolean }
   return { success: true, data: { needsMigration: false } };
 }
 
-export async function handleCleanup(): Promise<
+export async function handleCleanup(skipGuard = false): Promise<
   ApiResponse<{
     deletedMemories: number;
     deletedMemoriesUser: number;
@@ -1389,11 +1389,11 @@ export async function handleCleanup(): Promise<
     deletedPrompts: number;
   }>
 > {
-  if (_cleanupInProgress) {
+  if (!skipGuard && _cleanupInProgress) {
     return { success: false, error: "Cleanup is already in progress" };
   }
 
-  _cleanupInProgress = true;
+  if (!skipGuard) _cleanupInProgress = true;
   try {
     await ensureInit();
 
@@ -1443,11 +1443,11 @@ export async function handleCleanup(): Promise<
     log("handleCleanup: error", { error: String(error) });
     return { success: false, error: String(error) };
   } finally {
-    _cleanupInProgress = false;
+    if (!skipGuard) _cleanupInProgress = false;
   }
 }
 
-export async function handleDeduplicate(): Promise<
+export async function handleDeduplicate(skipGuard = false): Promise<
   ApiResponse<{
     totalChecked: number;
     groupsChecked: number;
@@ -1455,10 +1455,10 @@ export async function handleDeduplicate(): Promise<
     duplicatesRemoved: number;
   }>
 > {
-  if (_dedupInProgress) {
+  if (!skipGuard && _dedupInProgress) {
     return { success: false, error: "Deduplication is already in progress" };
   }
-  _dedupInProgress = true;
+  if (!skipGuard) _dedupInProgress = true;
 
   try {
     await ensureInit();
@@ -1590,7 +1590,7 @@ export async function handleDeduplicate(): Promise<
     logError("handleDeduplicate: error", { error: String(error) });
     return { success: false, error: String(error) };
   } finally {
-    _dedupInProgress = false;
+    if (!skipGuard) _dedupInProgress = false;
   }
 }
 

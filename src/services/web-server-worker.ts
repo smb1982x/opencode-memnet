@@ -29,6 +29,11 @@ import {
   handleMigrationRun,
   handleListUserProfiles,
 } from "./api-handlers.js";
+import {
+  enqueueJob,
+  getJobStatus,
+  getTagMigrationVirtualJob,
+} from "./memory-maintenance-job-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,6 +42,10 @@ const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 const disableWebuiAuth = (CONFIG as any).disableWebuiAuth ?? false;
 const disableClientAuth = (CONFIG as any).disableClientAuth ?? false;
+
+function deriveJobScope(): "all_profiles" | "current_profile" {
+  return disableWebuiAuth ? "all_profiles" : "current_profile";
+}
 
 async function parseBody(req: Request): Promise<any> {
   const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
@@ -289,13 +298,54 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (path === "/api/cleanup" && method === "POST") {
-      const result = await handleCleanup();
-      return jsonResponse(result);
+      const scope = deriveJobScope();
+      const result = enqueueJob("cleanup_memories", scope);
+      if (!result.success) {
+        return jsonResponse(
+          { success: false, error: result.error, code: result.code },
+          409
+        );
+      }
+      return jsonResponse({
+        success: true,
+        data: {
+          jobId: result.data!.id,
+          status: result.data!.status,
+          type: result.data!.type,
+          message: "Job queued successfully",
+        },
+      });
     }
 
     if (path === "/api/deduplicate" && method === "POST") {
-      const result = await handleDeduplicate();
-      return jsonResponse(result);
+      const scope = deriveJobScope();
+      const result = enqueueJob("deduplicate_memories", scope);
+      if (!result.success) {
+        return jsonResponse(
+          { success: false, error: result.error, code: result.code },
+          409
+        );
+      }
+      return jsonResponse({
+        success: true,
+        data: {
+          jobId: result.data!.id,
+          status: result.data!.status,
+          type: result.data!.type,
+          message: "Job queued successfully",
+        },
+      });
+    }
+
+    if (path === "/api/jobs/memory" && method === "GET") {
+      const status = getJobStatus();
+      const tagJob = await getTagMigrationVirtualJob();
+      if (tagJob && !status.current) {
+        status.current = tagJob;
+        status.activity.active = true;
+        status.activity.text = "Tag Untagged in progress...";
+      }
+      return jsonResponse({ success: true, data: status });
     }
 
     if (path === "/api/migration/run" && method === "POST") {

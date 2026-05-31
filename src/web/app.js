@@ -18,6 +18,9 @@ const state = {
   activeProfileId: localStorage.getItem("opencode-memnet-active-profile") || "",
   panelViewUserId: "",
   authDisabled: false,
+  lastJobStatus: { activity: { active: false, text: "Idle", queuedCount: 0 }, current: null, queued: [], history: [] },
+  jobPollTimer: null,
+  jobPollInterval: 5000,
 };
 
 marked.setOptions({
@@ -704,17 +707,47 @@ function changePage(delta) {
 }
 
 let toastTimer = null;
+let confirmModalResolver = null;
 function showToast(message, type = "success") {
   if (toastTimer) clearTimeout(toastTimer);
   const toast = document.getElementById("toast");
-  toast.textContent = message;
+  const truncatedMsg = truncateText(message, 240);
+
+  const icons = {
+    success: "check-circle",
+    error: "x-circle",
+    info: "info",
+  };
+  const iconName = icons[type] || icons.info;
+
+  toast.innerHTML = `<i data-lucide="${iconName}" class="toast-icon toast-icon-${type}"></i> <span class="toast-message">${escapeHtml(truncatedMsg)}</span>`;
   toast.className = `toast ${type}`;
   toast.classList.remove("hidden");
+  lucide.createIcons({ nodes: [toast] });
 
   toastTimer = setTimeout(() => {
     toast.classList.add("hidden");
     toastTimer = null;
   }, 3000);
+}
+
+function openConfirmModal(titleKey, descKey) {
+  return new Promise((resolve) => {
+    confirmModalResolver = resolve;
+    document.getElementById("confirm-modal-title").textContent = t(titleKey);
+    document.getElementById("confirm-modal-desc").textContent = t(descKey);
+    document.getElementById("confirm-modal-cancel").textContent = t("btn-cancel");
+    document.getElementById("confirm-modal-confirm").textContent = t("btn-confirm");
+    document.getElementById("confirm-modal").classList.remove("hidden");
+  });
+}
+
+function closeConfirmModal(result) {
+  document.getElementById("confirm-modal").classList.add("hidden");
+  if (confirmModalResolver) {
+    confirmModalResolver(result);
+    confirmModalResolver = null;
+  }
 }
 
 function showError(message) {
@@ -765,38 +798,256 @@ async function unpinMemory(id) {
   }
 }
 
-async function runCleanup() {
-  if (!confirm(t("confirm-cleanup"))) return;
+function truncateText(text, maxLength) {
+  if (!text || text.length <= maxLength) return text;
+  return text.substring(0, maxLength - 3) + "...";
+}
 
-  showToast(t("status-cleanup"), "info");
+function isJobTypeActive(type) {
+  return (
+    (state.lastJobStatus.current?.type === type &&
+     state.lastJobStatus.current?.status === "running") ||
+    state.lastJobStatus.queued.some(j => j.type === type)
+  );
+}
+
+function jobTypeLabel(type) {
+  const labels = {
+    cleanup_memories: "Cleanup",
+    deduplicate_memories: "Deduplicate",
+    tag_untagged_memories: "Tag Untagged",
+  };
+  return labels[type] || type;
+}
+
+async function runCleanup() {
+  if (isJobTypeActive("cleanup_memories")) return;
+
+  const confirmed = await openConfirmModal(
+    "modal-confirm-cleanup-title",
+    "modal-confirm-cleanup-desc"
+  );
+  if (!confirmed) return;
+
   const result = await fetchAPI("/api/cleanup", { method: "POST" });
 
   if (result.success) {
-    showToast(t("toast-cleanup-success"), "success");
-    await loadMemories();
-    await loadStats();
+    showToast(t("job-queued"), "info");
+    pollJobStatus();
+  } else if (result.code === "JOB_ALREADY_QUEUED_OR_RUNNING") {
+    showToast(t("job-already-running"), "error");
   } else {
     showToast(result.error || t("toast-cleanup-failed"), "error");
   }
 }
 
 async function runDeduplication() {
-  if (!confirm(t("confirm-dedup"))) return;
+  if (isJobTypeActive("deduplicate_memories")) return;
 
-  showToast(t("status-dedup"), "info");
+  const confirmed = await openConfirmModal(
+    "modal-confirm-dedup-title",
+    "modal-confirm-dedup-desc"
+  );
+  if (!confirmed) return;
+
   const result = await fetchAPI("/api/deduplicate", { method: "POST" });
 
   if (result.success) {
-    const { totalChecked, duplicatesFound, duplicatesRemoved } = result.data || {};
-    const msg = duplicatesRemoved > 0
-      ? `${t("toast-dedup-success")} (${duplicatesRemoved} ${duplicatesRemoved === 1 ? "duplicate removed" : "duplicates removed"} out of ${totalChecked || 0} checked)`
-      : `${t("toast-dedup-success")} (no duplicates found among ${totalChecked || 0} memories)`;
-    showToast(msg, "success");
-    await loadMemories();
-    await loadStats();
+    showToast(t("job-queued"), "info");
+    pollJobStatus();
+  } else if (result.code === "JOB_ALREADY_QUEUED_OR_RUNNING") {
+    showToast(t("job-already-running"), "error");
   } else {
     showToast(result.error || t("toast-dedup-failed"), "error");
   }
+}
+
+function updateStatusBar(data) {
+  const indicator = document.getElementById("job-status-indicator");
+  const textEl = document.getElementById("job-status-text");
+
+  const active = data.activity.active;
+  indicator.classList.toggle("active", active);
+
+  if (!data.activity.active) {
+    const recentFailed = data.history?.find(j => j.status === "failed");
+    if (recentFailed) {
+      textEl.textContent = recentFailed.type === "cleanup_memories"
+        ? t("job-status-cleanup-failed")
+        : t("job-status-dedup-failed");
+    } else {
+      textEl.textContent = t("job-status-idle");
+    }
+  } else if (data.current?.type === "cleanup_memories") {
+    textEl.textContent = t("job-status-cleanup-running");
+  } else if (data.current?.type === "deduplicate_memories") {
+    textEl.textContent = t("job-status-dedup-running");
+  } else if (data.current?.type === "tag_untagged_memories") {
+    textEl.textContent = t("job-status-tag-running");
+  } else if (data.activity.queuedCount > 0) {
+    textEl.textContent = t("job-status-queued").replace("{count}", data.activity.queuedCount);
+  } else {
+    textEl.textContent = t("job-status-idle");
+  }
+}
+
+function updateButtonStates(data) {
+  const cleanupBtn = document.getElementById("cleanup-btn");
+  const dedupBtn = document.getElementById("deduplicate-btn");
+
+  cleanupBtn.disabled = isJobTypeActive("cleanup_memories");
+  dedupBtn.disabled = isJobTypeActive("deduplicate_memories");
+}
+
+function handleJobTransitions(prev, curr) {
+  if (prev.current && prev.current.status === "running") {
+    const prevJobId = prev.current.id;
+    const completedJob = curr.history.find(j => j.id === prevJobId);
+
+    if (completedJob) {
+      if (completedJob.status === "completed") {
+        const summary = completedJob.summary || t("toast-cleanup-success");
+        showToast(truncateText(summary, 240), "success");
+        loadMemories();
+        loadStats();
+      } else if (completedJob.status === "failed") {
+        const error = completedJob.error || t("toast-cleanup-failed");
+        showToast(truncateText(error, 240), "error");
+      }
+    }
+  }
+}
+
+async function pollJobStatus() {
+  try {
+    const result = await fetchAPI("/api/jobs/memory");
+    if (!result.success) {
+      if (result.error?.includes("401") || result.error?.includes("Unauthorized")) {
+        stopJobPolling();
+      }
+      return;
+    }
+
+    const data = result.data;
+    const prev = state.lastJobStatus;
+
+    handleJobTransitions(prev, data);
+
+    state.lastJobStatus = data;
+
+    updateStatusBar(data);
+
+    if (document.getElementById("job-drawer").classList.contains("sheet-open")) {
+      renderDrawerContent(data);
+    }
+
+    updateButtonStates(data);
+
+    adjustPollInterval(data.activity.active);
+
+  } catch (e) {
+    console.warn("Job poll error:", e);
+  }
+}
+
+function adjustPollInterval(isActive) {
+  const desiredInterval = isActive ? 2000 : 5000;
+  if (state.jobPollInterval !== desiredInterval) {
+    state.jobPollInterval = desiredInterval;
+    clearInterval(state.jobPollTimer);
+    state.jobPollTimer = setInterval(pollJobStatus, desiredInterval);
+  }
+}
+
+function startJobPolling() {
+  if (state.jobPollTimer) return;
+  state.jobPollInterval = 5000;
+  state.jobPollTimer = setInterval(pollJobStatus, 5000);
+  pollJobStatus();
+}
+
+function stopJobPolling() {
+  if (state.jobPollTimer) {
+    clearInterval(state.jobPollTimer);
+    state.jobPollTimer = null;
+  }
+}
+
+function openJobDrawer() {
+  document.getElementById("job-drawer").classList.add("sheet-open");
+  renderDrawerContent(state.lastJobStatus);
+}
+
+function closeJobDrawer() {
+  document.getElementById("job-drawer").classList.remove("sheet-open");
+}
+
+function renderDrawerContent(data) {
+  renderCurrentJob(data.current);
+  renderQueuedJobs(data.queued);
+  renderHistoryJobs(data.history);
+}
+
+function renderCurrentJob(job) {
+  const container = document.getElementById("drawer-current");
+  if (!job) {
+    container.innerHTML = `<div class="drawer-empty">${escapeHtml(t("job-status-idle"))}</div>`;
+    return;
+  }
+  const label = jobTypeLabel(job.type);
+  const progress = job.totalItems
+    ? `${job.processedItems || 0}/${job.totalItems}`
+    : "";
+  container.innerHTML = `
+    <div class="drawer-job-card running">
+      <div class="drawer-job-header">
+        <span class="badge badge-job-type">${escapeHtml(label)}</span>
+        <span class="drawer-job-status running">
+          <i data-lucide="loader" class="icon icon-spin"></i> Running
+        </span>
+      </div>
+      ${progress ? `<div class="drawer-job-progress">${escapeHtml(progress)}</div>` : ""}
+      <div class="drawer-job-time">${formatDate(job.startedAt || job.createdAt)}</div>
+    </div>`;
+  lucide.createIcons();
+}
+
+function renderQueuedJobs(jobs) {
+  const container = document.getElementById("drawer-queued");
+  if (!jobs || jobs.length === 0) {
+    container.innerHTML = `<div class="drawer-empty">${escapeHtml(t("drawer-no-queued"))}</div>`;
+    return;
+  }
+  container.innerHTML = jobs.map(j => `
+    <div class="drawer-job-card">
+      <div class="drawer-job-header">
+        <span class="badge badge-job-type">${escapeHtml(jobTypeLabel(j.type))}</span>
+      </div>
+      <div class="drawer-job-time">${formatDate(j.createdAt)}</div>
+    </div>`).join("");
+}
+
+function renderHistoryJobs(jobs) {
+  const container = document.getElementById("drawer-history");
+  if (!jobs || jobs.length === 0) {
+    container.innerHTML = `<div class="drawer-empty">${escapeHtml(t("drawer-no-history"))}</div>`;
+    return;
+  }
+  container.innerHTML = jobs.map(j => {
+    const isFailed = j.status === "failed";
+    const statusText = isFailed ? t("drawer-job-failed") : t("drawer-job-completed");
+    const statusClass = isFailed ? "failed" : "completed";
+    return `
+      <div class="drawer-job-card ${statusClass}">
+        <div class="drawer-job-header">
+          <span class="badge badge-job-type">${escapeHtml(jobTypeLabel(j.type))}</span>
+          <span class="drawer-job-status ${statusClass}">${escapeHtml(statusText)}</span>
+        </div>
+        ${j.summary ? `<div class="drawer-job-summary">${escapeHtml(truncateText(j.summary, 120))}</div>` : ""}
+        ${isFailed && j.error ? `<div class="drawer-job-error">${escapeHtml(truncateText(j.error, 120))}</div>` : ""}
+        <div class="drawer-job-time">${formatDate(j.completedAt || j.createdAt)}</div>
+      </div>`;
+  }).join("");
 }
 
 function startAutoRefresh() {
@@ -1267,6 +1518,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("cleanup-btn").addEventListener("click", runCleanup);
   document.getElementById("deduplicate-btn").addEventListener("click", runDeduplication);
 
+  document.getElementById("confirm-modal-cancel").addEventListener("click", () => closeConfirmModal(false));
+  document.getElementById("confirm-modal-confirm").addEventListener("click", () => closeConfirmModal(true));
+  document.getElementById("confirm-modal").addEventListener("click", (e) => {
+    if (e.target.id === "confirm-modal") closeConfirmModal(false);
+  });
+
+  document.getElementById("job-drawer-toggle").addEventListener("click", openJobDrawer);
+  document.getElementById("job-drawer-close").addEventListener("click", closeJobDrawer);
+  document.getElementById("job-drawer").addEventListener("click", (e) => {
+    if (e.target.id === "job-drawer") closeJobDrawer();
+  });
+
   document
     .getElementById("migration-confirm-checkbox")
     .addEventListener("change", toggleMigrationButtons);
@@ -1381,6 +1644,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key === "Escape") {
       document.getElementById("settings-panel").classList.add("hidden");
       closeProfileSheet();
+      closeJobDrawer();
+      closeConfirmModal(false);
     }
   });
 
@@ -1417,27 +1682,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }, 3000);
 
-  // Migration status bar polling
-  setInterval(async () => {
-    try {
-      const headers = {};
-      if (state.authKey) headers["Authorization"] = `Bearer ${state.authKey}`;
-      const res = await fetch("/api/migration/tags/progress", { headers });
-      const data = await res.json();
-      if (data.success) {
-        const bar = document.getElementById("migration-status-bar");
-        if (bar) {
-          if (data.data.status === "running") {
-            bar.textContent = `Status: Migrating Memories (${data.data.processed} of ${data.data.total})...`;
-          } else {
-            bar.textContent = "Status: Idle";
-          }
-        }
-      }
-    } catch {
-      /* ignore poll errors */
-    }
-  }, 2000);
+  startJobPolling();
 
   startAutoRefresh();
 

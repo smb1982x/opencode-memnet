@@ -33,6 +33,11 @@ import {
   handleSetClientNickname,
   handleGetClientStats,
 } from "./api-handlers.js";
+import {
+  enqueueJob,
+  getJobStatus,
+  getTagMigrationVirtualJob,
+} from "./memory-maintenance-job-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,6 +58,10 @@ export class WebServer {
   private readonly auth: AuthMiddleware | null;
   private readonly disableWebuiAuth: boolean;
   private readonly disableClientAuth: boolean;
+
+  private deriveJobScope(): "all_profiles" | "current_profile" {
+    return this.disableWebuiAuth ? "all_profiles" : "current_profile";
+  }
 
   constructor(
     config: WebServerConfig,
@@ -380,13 +389,54 @@ export class WebServer {
       }
 
       if (path === "/api/cleanup" && method === "POST") {
-        const result = await handleCleanup();
-        return this.jsonResponse(result);
+        const scope = this.deriveJobScope();
+        const result = enqueueJob("cleanup_memories", scope);
+        if (!result.success) {
+          return this.jsonResponse(
+            { success: false, error: result.error, code: result.code },
+            409
+          );
+        }
+        return this.jsonResponse({
+          success: true,
+          data: {
+            jobId: result.data!.id,
+            status: result.data!.status,
+            type: result.data!.type,
+            message: "Job queued successfully",
+          },
+        });
       }
 
       if (path === "/api/deduplicate" && method === "POST") {
-        const result = await handleDeduplicate();
-        return this.jsonResponse(result);
+        const scope = this.deriveJobScope();
+        const result = enqueueJob("deduplicate_memories", scope);
+        if (!result.success) {
+          return this.jsonResponse(
+            { success: false, error: result.error, code: result.code },
+            409
+          );
+        }
+        return this.jsonResponse({
+          success: true,
+          data: {
+            jobId: result.data!.id,
+            status: result.data!.status,
+            type: result.data!.type,
+            message: "Job queued successfully",
+          },
+        });
+      }
+
+      if (path === "/api/jobs/memory" && method === "GET") {
+        const status = getJobStatus();
+        const tagJob = await getTagMigrationVirtualJob();
+        if (tagJob && !status.current) {
+          status.current = tagJob;
+          status.activity.active = true;
+          status.activity.text = "Tag Untagged in progress...";
+        }
+        return this.jsonResponse({ success: true, data: status });
       }
 
       if (path === "/api/migration/run" && method === "POST") {

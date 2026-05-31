@@ -245,7 +245,7 @@ async function executeJob(job: MemoryMaintenanceJob): Promise<void> {
 
 async function executeCleanupJob(job: MemoryMaintenanceJob): Promise<void> {
   const { handleCleanup } = await import("./api-handlers.js");
-  const result = await handleCleanup();
+  const result = await handleCleanup(true);
 
   if (!result.success) {
     throw new Error(result.error || "Cleanup failed");
@@ -271,7 +271,7 @@ async function executeCleanupJob(job: MemoryMaintenanceJob): Promise<void> {
 
 async function executeDeduplicateJob(job: MemoryMaintenanceJob): Promise<void> {
   const { handleDeduplicate } = await import("./api-handlers.js");
-  const result = await handleDeduplicate();
+  const result = await handleDeduplicate(true);
 
   if (!result.success) {
     throw new Error(result.error || "Deduplication failed");
