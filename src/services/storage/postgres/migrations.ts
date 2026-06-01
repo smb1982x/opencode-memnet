@@ -367,6 +367,52 @@ export const migrations: Migration[] = [
       await sql`CREATE INDEX IF NOT EXISTS idx_clients_nickname ON clients (nickname) WHERE nickname IS NOT NULL`;
     },
   },
+
+  // ── 13: Canonical tag registry ──
+  {
+    version: 13,
+    description:
+      "Create canonical tag registry tables (memory_tags, memory_tag_aliases, memory_tag_links)",
+    transactional: true,
+    up: async (sql: SqlClient) => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS memory_tags (
+          id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+          canonical_name  TEXT NOT NULL UNIQUE,
+          description     TEXT,
+          category        TEXT,
+          order_sensitive BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          usage_count     INTEGER NOT NULL DEFAULT 0,
+          last_used_at    TIMESTAMPTZ
+        )
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS memory_tag_aliases (
+          id               INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+          tag_id           INTEGER NOT NULL REFERENCES memory_tags(id) ON DELETE CASCADE,
+          alias            TEXT NOT NULL,
+          normalized_alias TEXT NOT NULL UNIQUE,
+          created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS memory_tag_links (
+          memory_id  TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+          tag_id     INTEGER NOT NULL REFERENCES memory_tags(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (memory_id, tag_id)
+        )
+      `;
+      await sql`
+        CREATE INDEX IF NOT EXISTS idx_memory_tag_links_tag_id ON memory_tag_links (tag_id)
+      `;
+      await sql`
+        CREATE INDEX IF NOT EXISTS idx_memory_tag_aliases_tag_id ON memory_tag_aliases (tag_id)
+      `;
+    },
+  },
 ];
 
 // ── Runner ──

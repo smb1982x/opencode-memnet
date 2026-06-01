@@ -154,7 +154,12 @@ export class WebServer {
     // Log every API request at debug level (verbose)
     if (path.startsWith("/api/")) {
       const qs = url.search ? `?${url.searchParams.toString()}` : "";
-      logDebug(`← ${method} ${path}${qs}`, { method, path, query: Object.fromEntries(url.searchParams), client: clientId || "unknown" });
+      logDebug(`← ${method} ${path}${qs}`, {
+        method,
+        path,
+        query: Object.fromEntries(url.searchParams),
+        client: clientId || "unknown",
+      });
     }
 
     // CORS preflight (no auth required)
@@ -179,7 +184,6 @@ export class WebServer {
     const startTime = performance.now();
 
     try {
-
       if (path === "/" || path === "/index.html") {
         return this.serveStaticFile("index.html", "text/html");
       }
@@ -392,10 +396,7 @@ export class WebServer {
         const scope = this.deriveJobScope();
         const result = enqueueJob("cleanup_memories", scope);
         if (!result.success) {
-          return this.jsonResponse(
-            { success: false, error: result.error, code: result.code },
-            409
-          );
+          return this.jsonResponse({ success: false, error: result.error, code: result.code }, 409);
         }
         return this.jsonResponse({
           success: true,
@@ -412,10 +413,7 @@ export class WebServer {
         const scope = this.deriveJobScope();
         const result = enqueueJob("deduplicate_memories", scope);
         if (!result.success) {
-          return this.jsonResponse(
-            { success: false, error: result.error, code: result.code },
-            409
-          );
+          return this.jsonResponse({ success: false, error: result.error, code: result.code }, 409);
         }
         return this.jsonResponse({
           success: true,
@@ -426,6 +424,36 @@ export class WebServer {
             message: "Job queued successfully",
           },
         });
+      }
+
+      // Tag normalization job
+      if (path === "/api/tags/normalize" && method === "POST") {
+        const scope = this.deriveJobScope();
+        const result = enqueueJob("normalize_memory_tags", scope);
+        if (!result.success) {
+          return this.jsonResponse({ success: false, error: result.error, code: result.code }, 409);
+        }
+        return this.jsonResponse({
+          success: true,
+          data: {
+            jobId: result.data!.id,
+            status: result.data!.status,
+            type: result.data!.type,
+            message: "Tag normalization job queued successfully",
+          },
+        });
+      }
+
+      // Get canonical tags
+      if (path === "/api/tags/canonical" && method === "GET") {
+        try {
+          const { createTagRegistry } = await import("./storage/factory.js");
+          const registry = createTagRegistry();
+          const tags = await registry.getAllCanonicalTags();
+          return this.jsonResponse({ success: true, data: { tags } });
+        } catch (err) {
+          return this.jsonResponse({ success: false, error: String(err) }, 500);
+        }
       }
 
       if (path === "/api/jobs/memory" && method === "GET") {

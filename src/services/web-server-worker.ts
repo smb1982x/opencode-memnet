@@ -301,10 +301,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const scope = deriveJobScope();
       const result = enqueueJob("cleanup_memories", scope);
       if (!result.success) {
-        return jsonResponse(
-          { success: false, error: result.error, code: result.code },
-          409
-        );
+        return jsonResponse({ success: false, error: result.error, code: result.code }, 409);
       }
       return jsonResponse({
         success: true,
@@ -321,10 +318,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const scope = deriveJobScope();
       const result = enqueueJob("deduplicate_memories", scope);
       if (!result.success) {
-        return jsonResponse(
-          { success: false, error: result.error, code: result.code },
-          409
-        );
+        return jsonResponse({ success: false, error: result.error, code: result.code }, 409);
       }
       return jsonResponse({
         success: true,
@@ -335,6 +329,36 @@ async function handleRequest(req: Request): Promise<Response> {
           message: "Job queued successfully",
         },
       });
+    }
+
+    // Tag normalization job
+    if (path === "/api/tags/normalize" && method === "POST") {
+      const scope = deriveJobScope();
+      const result = enqueueJob("normalize_memory_tags", scope);
+      if (!result.success) {
+        return jsonResponse({ success: false, error: result.error, code: result.code }, 409);
+      }
+      return jsonResponse({
+        success: true,
+        data: {
+          jobId: result.data!.id,
+          status: result.data!.status,
+          type: result.data!.type,
+          message: "Tag normalization job queued successfully",
+        },
+      });
+    }
+
+    // Get canonical tags
+    if (path === "/api/tags/canonical" && method === "GET") {
+      try {
+        const { createTagRegistry } = await import("./storage/factory.js");
+        const registry = createTagRegistry();
+        const tags = await registry.getAllCanonicalTags();
+        return jsonResponse({ success: true, data: { tags } });
+      } catch (err) {
+        return jsonResponse({ success: false, error: String(err) }, 500);
+      }
     }
 
     if (path === "/api/jobs/memory" && method === "GET") {

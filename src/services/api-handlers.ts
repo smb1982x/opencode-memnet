@@ -8,6 +8,7 @@ import {
   createUserPromptRepository,
   createUserProfileRepository,
   createClientRepository,
+  createTagRegistry,
 } from "./storage/factory.js";
 import type {
   MemoryRepository,
@@ -23,6 +24,7 @@ import type {
 const memoryRepo: MemoryRepository = createMemoryRepository();
 const promptRepo: UserPromptRepository = createUserPromptRepository();
 const profileRepo: UserProfileRepository = createUserProfileRepository();
+const tagRegistry = createTagRegistry();
 let clientRepo: ClientRepository | null = null;
 
 // Repositories are singletons from the factory, but initialize() (which runs
@@ -371,6 +373,22 @@ export async function handleAddMemory(data: {
     };
 
     await memoryRepo.insert(record);
+
+    // Dual-write: also store in canonical tag registry
+    if (record.tags) {
+      try {
+        await tagRegistry.linkMemoryTags(
+          record.id,
+          record.tags
+            .split(",")
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        );
+      } catch (err) {
+        logError("api-handlers: failed to link memory tags in registry", { error: String(err) });
+      }
+    }
+
     return { success: true, data: { id } };
   } catch (error) {
     log("handleAddMemory: error", { error: String(error) });
@@ -486,6 +504,22 @@ export async function handleUpdateMemory(
     };
 
     await memoryRepo.update(updatedRecord);
+
+    // Dual-write: also update canonical tag registry
+    if (data.tags !== undefined) {
+      try {
+        const tagList = data.tags
+          ? data.tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean)
+          : [];
+        await tagRegistry.unlinkMemoryTags(id);
+        if (tagList.length > 0) {
+          await tagRegistry.linkMemoryTags(id, tagList);
+        }
+      } catch (err) {
+        logError("api-handlers: failed to update memory tags in registry", { error: String(err) });
+      }
+    }
+
     return { success: true };
   } catch (error) {
     log("handleUpdateMemory: error", { error: String(error) });
@@ -1268,6 +1302,17 @@ export async function handleAutoCapture(data: {
       gitRepoUrl: data.projectMetadata.gitRepoUrl,
     });
 
+    // Dual-write: also store in canonical tag registry
+    if (summaryResult.tags.length > 0) {
+      try {
+        await tagRegistry.linkMemoryTags(id, summaryResult.tags);
+      } catch (err) {
+        logError("api-handlers: failed to link auto-capture tags in registry", {
+          error: String(err),
+        });
+      }
+    }
+
     return { success: true, data: { captured: true, memoryId: id } };
   } catch (error) {
     log("handleAutoCapture: error", { error: String(error) });
@@ -1774,9 +1819,7 @@ export async function handleSetClientNickname(data: {
   }
 }
 
-export async function handleGetClientStats(data: {
-  clientId: string;
-}): Promise<
+export async function handleGetClientStats(data: { clientId: string }): Promise<
   ApiResponse<{
     nickname: string | null;
     firstSeen: number;

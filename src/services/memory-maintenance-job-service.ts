@@ -1,6 +1,8 @@
 // memory-maintenance-job-service.ts — unified memory maintenance job queue
 // Manages deduplicate_memories, cleanup_memories, and tag_untagged_memories
 // as queued background jobs with states: queued → running → completed/failed.
+// Enforces global single-runner: only ONE maintenance job runs at a time,
+// regardless of type. Cross-type jobs are queued and run sequentially.
 // Exposes progress via getJobStatus() for the WebUI status bar and drawer.
 
 import { log, logError } from "./logger.js";
@@ -10,17 +12,12 @@ import { log, logError } from "./logger.js";
 export type JobType =
   | "tag_untagged_memories"
   | "deduplicate_memories"
-  | "cleanup_memories";
+  | "cleanup_memories"
+  | "normalize_memory_tags";
 
-export type JobStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed";
+export type JobStatus = "queued" | "running" | "completed" | "failed";
 
-export type JobScope =
-  | "all_profiles"
-  | "current_profile";
+export type JobScope = "all_profiles" | "current_profile";
 
 export interface MemoryMaintenanceJob {
   id: string;
@@ -70,41 +67,50 @@ function jobTypeLabel(type: JobType): string {
       return "Deduplicate";
     case "tag_untagged_memories":
       return "Tag Untagged";
+    case "normalize_memory_tags":
+      return "Normalize Tags";
   }
 }
 
-function isConflict(existing: MemoryMaintenanceJob, type: JobType, scope: JobScope): boolean {
-  // Same type and scope is always a conflict if queued or running
+function isDuplicateJob(existing: MemoryMaintenanceJob, type: JobType, scope: JobScope): boolean {
+  // Same type and scope is a duplicate if already queued or running
   return existing.type === type && existing.scope === scope;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
 
-export function enqueueJob(type: JobType, scope: JobScope): {
+export function enqueueJob(
+  type: JobType,
+  scope: JobScope
+): {
   success: boolean;
   data?: MemoryMaintenanceJob;
   error?: string;
   code?: string;
 } {
-  // Check for conflicting queued/running jobs
-  if (currentJob && isConflict(currentJob, type, scope)) {
+  // Step 1: Reject same-type+same-scope duplicates against the running job
+  if (currentJob && isDuplicateJob(currentJob, type, scope)) {
     return {
       success: false,
-      error: `A ${jobTypeLabel(type).toLowerCase()} job is already queued or running for this scope.`,
+      error: `A ${jobTypeLabel(type).toLowerCase()} job is already running for this scope.`,
       code: "JOB_ALREADY_QUEUED_OR_RUNNING",
     };
   }
 
+  // Step 2: Reject same-type+same-scope duplicates against queued jobs
   for (const qj of queue) {
-    if (isConflict(qj, type, scope)) {
+    if (isDuplicateJob(qj, type, scope)) {
       return {
         success: false,
-        error: `A ${jobTypeLabel(type).toLowerCase()} job is already queued or running for this scope.`,
+        error: `A ${jobTypeLabel(type).toLowerCase()} job is already queued for this scope.`,
         code: "JOB_ALREADY_QUEUED_OR_RUNNING",
       };
     }
   }
 
+  // Step 3: Queue the job
+  // Global single-runner: processQueue() ensures only one job runs at a time,
+  // regardless of type. Cross-type jobs are queued and run sequentially.
   const job: MemoryMaintenanceJob = {
     id: generateJobId(),
     type,
@@ -114,8 +120,9 @@ export function enqueueJob(type: JobType, scope: JobScope): {
   };
 
   queue.push(job);
+  log(`job-service: ${jobTypeLabel(type)} job queued (${job.id})`);
 
-  // Start processing if not already running
+  // Step 4: Start processing if not already running
   if (!_running) {
     processQueue().catch((err) => {
       logError("job-service: queue processing error", { error: String(err) });
@@ -150,9 +157,7 @@ export function getJobStatus(): JobStatusResponse {
 
   // Check for recent failed jobs not yet acknowledged
   if (!active) {
-    const recentFailed = history.find(
-      (j) => j.status === "failed"
-    );
+    const recentFailed = history.find((j) => j.status === "failed");
     if (recentFailed) {
       text = `${jobTypeLabel(recentFailed.type)} failed`;
     }
@@ -164,6 +169,16 @@ export function getJobStatus(): JobStatusResponse {
     queued: queue.map((j) => ({ ...j })),
     history: history.slice(0, MAX_HISTORY),
   };
+}
+
+// ── Test helpers ────────────────────────────────────────────────────────
+
+/** Reset all internal state. For testing only. */
+export function resetJobQueue(): void {
+  queue = [];
+  currentJob = null;
+  history = [];
+  _running = false;
 }
 
 // ── Tag migration virtual job ──────────────────────────────────────────
@@ -200,31 +215,35 @@ async function processQueue(): Promise<void> {
   if (_running) return;
   _running = true;
 
-  while (queue.length > 0) {
-    const job = queue.shift()!;
-    currentJob = { ...job, status: "running", startedAt: new Date().toISOString() };
+  try {
+    while (queue.length > 0) {
+      const job = queue.shift()!;
+      currentJob = { ...job, status: "running", startedAt: new Date().toISOString() };
+      log(`job-service: starting ${jobTypeLabel(currentJob.type)} (${currentJob.id})`);
 
-    try {
-      await executeJob(currentJob);
-      currentJob.status = "completed";
-      currentJob.completedAt = new Date().toISOString();
-    } catch (error) {
-      currentJob.status = "failed";
-      currentJob.completedAt = new Date().toISOString();
-      currentJob.error = String(error);
-      logError(`job-service: ${currentJob.type} failed`, { error: String(error) });
+      try {
+        await executeJob(currentJob);
+        currentJob.status = "completed";
+        currentJob.completedAt = new Date().toISOString();
+        log(`job-service: ${jobTypeLabel(currentJob.type)} completed (${currentJob.id})`);
+      } catch (error) {
+        currentJob.status = "failed";
+        currentJob.completedAt = new Date().toISOString();
+        currentJob.error = String(error);
+        logError(`job-service: ${currentJob.type} failed`, { error: String(error) });
+      }
+
+      // Move to history
+      history.unshift({ ...currentJob });
+      if (history.length > MAX_HISTORY) {
+        history = history.slice(0, MAX_HISTORY);
+      }
+
+      currentJob = null;
     }
-
-    // Move to history
-    history.unshift({ ...currentJob });
-    if (history.length > MAX_HISTORY) {
-      history = history.slice(0, MAX_HISTORY);
-    }
-
-    currentJob = null;
+  } finally {
+    _running = false;
   }
-
-  _running = false;
 }
 
 async function executeJob(job: MemoryMaintenanceJob): Promise<void> {
@@ -237,6 +256,9 @@ async function executeJob(job: MemoryMaintenanceJob): Promise<void> {
       break;
     case "tag_untagged_memories":
       await executeTagMigrationJob(job);
+      break;
+    case "normalize_memory_tags":
+      await executeNormalizeTagsJob(job);
       break;
     default:
       throw new Error(`Unknown job type: ${job.type}`);
@@ -300,4 +322,22 @@ async function executeTagMigrationJob(job: MemoryMaintenanceJob): Promise<void> 
   // For now, this is a one-shot trigger
   await runTagMigration();
   job.summary = "Tag migration cycle completed.";
+}
+
+async function executeNormalizeTagsJob(job: MemoryMaintenanceJob): Promise<void> {
+  const { createTagRegistry } = await import("./storage/factory.js");
+  const registry = createTagRegistry();
+
+  log("job-service: starting tag normalization backfill");
+
+  const result = await registry.backfillFromExistingTags(100);
+
+  job.processedItems = result.processed;
+  job.totalItems = result.processed;
+
+  job.summary = [
+    `Processed ${result.processed} memories.`,
+    `Created ${result.created} new canonical tags.`,
+    `Linked ${result.linked} tag assignments.`,
+  ].join(" ");
 }

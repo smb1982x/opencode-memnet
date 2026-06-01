@@ -278,8 +278,13 @@ RULES:
 2. SKIP non-technical by returning type="skip"
 3. NO meta-commentary or behavior analysis
 4. Include specific file names, functions, technical details
-5. Generate 2-4 technical tags (e.g., "react", "auth", "bug-fix")
-6. You MUST write the summary in ${langName}.
+5. You MUST write the summary in ${langName}.
+
+TAG RULES:
+- Generate 2-4 concise, lowercase, hyphenated technical tags
+- Prefer stable nouns, technology names, system components
+- Avoid verbs, gerunds, arbitrary abbreviations
+- Examples: "react", "auth", "bug-fix", "docker", "api-design"
 
 FORMAT:
 ## Request
@@ -345,8 +350,13 @@ RULES:
 2. SKIP non-technical by returning type="skip"
 3. NO meta-commentary or behavior analysis
 4. Include specific file names, functions, technical details
-5. Generate 2-4 technical tags (e.g., "react", "auth", "bug-fix")
-6. You MUST write the summary in ${langName}.
+5. You MUST write the summary in ${langName}.
+
+TAG RULES:
+- Generate 2-4 concise, lowercase, hyphenated technical tags
+- Prefer stable nouns, technology names, system components
+- Avoid verbs, gerunds, arbitrary abbreviations
+- Examples: "react", "auth", "bug-fix", "docker", "api-design"
 
 FORMAT:
 ## Request

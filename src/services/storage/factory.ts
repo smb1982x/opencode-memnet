@@ -7,6 +7,7 @@
 
 import { CONFIG } from "../../config.js";
 import { mergeProfileData as sharedMergeProfileData } from "./postgres/profile-utils.js";
+import { PostgresTagRegistry } from "./postgres/tag-registry.js";
 import type {
   AISessionRepository,
   AIMessageRow,
@@ -35,6 +36,7 @@ let promptRepo: UserPromptRepository | null = null;
 let profileRepo: UserProfileRepository | null = null;
 let sessionRepo: AISessionRepository | null = null;
 let clientRepo: ClientRepository | null = null;
+let tagRegistry: PostgresTagRegistry | null = null;
 
 export function createMemoryRepository(): MemoryRepository {
   if (memoryRepo) return memoryRepo;
@@ -64,6 +66,12 @@ export function createClientRepository(): ClientRepository {
   if (clientRepo) return clientRepo;
   clientRepo = new PostgresClientRepositoryLazy();
   return clientRepo;
+}
+
+export function createTagRegistry(): PostgresTagRegistry {
+  if (tagRegistry) return tagRegistry;
+  tagRegistry = new PostgresTagRegistry();
+  return tagRegistry;
 }
 
 /**
