@@ -20,6 +20,7 @@ services:
 
   server:
     build: .
+    image: git.phrk.org/pub/opencode-memnet:${OPENCODE-MEMNET_IMAGE_TAG:-latest}
     container_name: DO-NOT-TOUCH-OCM-server
     restart: unless-stopped
     ports:
